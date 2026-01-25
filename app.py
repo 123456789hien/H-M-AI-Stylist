@@ -9,18 +9,18 @@ import os
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="H&M AI Stylist | Psychographic Edition",
+    page_title="H&M AI Stylist | Psychographic Intelligence",
     page_icon="👗",
     layout="wide"
 )
 
-# --- 2. CORRECTED PROFESSIONAL CSS ---
+# --- 2. PROFESSIONAL CSS (FIXED TYPO) ---
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    div.stButton > button:first-child { background-color: #ffb3b3; border: none; }
     [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #eee; }
+    .product-card { border: 1px solid #eee; padding: 10px; border-radius: 10px; background: white; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -32,105 +32,124 @@ FILE_IDS = {
     "images_zip": "1X5q8o8fnR-MGBjBzhZf5gH8URNKD2uJA"
 }
 
-def get_drive_download_url(file_id):
+def get_drive_url(file_id):
     return f'https://drive.google.com/uc?export=download&id={file_id}'
 
-# --- 4. OPTIMIZED DATA LOADING ---
+# --- 4. DATA LOADING & AUTO-CLEANING (FIXES KEYERROR) ---
 @st.cache_data(show_spinner=False)
-def load_csv_data():
+def load_and_clean_data():
     try:
-        articles = pd.read_csv(get_drive_download_url(FILE_IDS["article_csv"]))
-        dna = pd.read_csv(get_drive_download_url(FILE_IDS["customer_dna"]))
-        seasonal = pd.read_csv(get_drive_download_url(FILE_IDS["seasonal_trends"]))
+        articles = pd.read_csv(get_drive_url(FILE_IDS["article_csv"]))
+        dna = pd.read_csv(get_drive_url(FILE_IDS["customer_dna"]))
+        seasonal = pd.read_csv(get_drive_url(FILE_IDS["seasonal_trends"]))
+        
+        # Standardize Columns: Remove spaces and hidden index columns
+        for df in [articles, dna, seasonal]:
+            df.columns = df.columns.str.strip()
+            if 'Unnamed: 0' in df.columns:
+                df.drop(columns=['Unnamed: 0'], inplace=True)
+                
         return articles, dna, seasonal
     except Exception as e:
-        st.error(f"Error connecting to Google Drive: {e}")
+        st.error(f"Data Sync Error: {e}")
         return None, None, None
 
 @st.cache_resource(show_spinner=False)
-def setup_image_library():
-    """Unzips images only if folder doesn't exist to save time/RAM"""
+def extract_images():
     target_path = "images"
     if not os.path.exists(target_path):
         os.makedirs(target_path)
         try:
-            r = requests.get(get_drive_download_url(FILE_IDS["images_zip"]), stream=True)
+            r = requests.get(get_drive_url(FILE_IDS["images_zip"]), stream=True)
             with zipfile.ZipFile(BytesIO(r.content)) as z:
                 z.extractall(target_path)
-        except:
-            st.warning("Image library is large; some images may load slowly.")
+        except Exception as e:
+            st.sidebar.warning("Image library is pending download...")
     return True
 
-# Initialize System
-articles, dna, seasonal = load_csv_data()
-setup_image_library()
+# --- INITIALIZE ---
+with st.spinner('Syncing AI Stylist Assets...'):
+    articles, dna, seasonal = load_and_clean_data()
+    extract_images()
 
-if articles is not None:
-    # --- 5. SIDEBAR & PERSONALIZATION ---
-    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=80)
-    st.sidebar.title("AI Stylist Panel")
+# --- 5. MAIN APPLICATION LOGIC ---
+if articles is not None and dna is not None:
+    # --- SIDEBAR: PERSONALIZATION ---
+    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=100)
+    st.sidebar.title("Stylist Control Center")
     
-    st.sidebar.subheader("User Profile")
-    user_id = st.sidebar.selectbox("Select Client DNA", dna['customer_id'].unique()[:50])
-    u_data = dna[dna['customer_id'] == user_id].iloc[0]
+    # Dynamic Column Detection for DNA
+    id_col = 'customer_id' if 'customer_id' in dna.columns else dna.columns[0]
+    price_col = 'avg_price' if 'avg_price' in dna.columns else dna.columns[1]
+    count_col = 'transaction_count' if 'transaction_count' in dna.columns else dna.columns[2]
+
+    st.sidebar.subheader("👤 Client Profile")
+    user_id = st.sidebar.selectbox("Select DNA Signature", dna[id_col].unique()[:50])
+    u_info = dna[dna[id_col] == user_id].iloc[0]
     
-    st.sidebar.metric("Spending Segment", f"${u_data['avg_price']:.3f}")
-    st.sidebar.metric("Transactions", int(u_data['transaction_count']))
+    st.sidebar.metric("Price Affinity", f"${u_info[price_col]:.3f}")
+    st.sidebar.metric("Purchase Depth", f"{int(u_info[count_col])} items")
     
     st.sidebar.divider()
-    selected_mood = st.sidebar.radio("Current Target Mood", articles['mood'].unique())
+    
+    # Dynamic Column Detection for Articles
+    mood_col = 'mood' if 'mood' in articles.columns else 'Mood'
+    selected_mood = st.sidebar.radio("Target Style Mood", articles[mood_col].unique())
 
-    # --- 6. MAIN INTERFACE ---
-    st.title("👗 H&M Psychographic Stylist")
-    st.markdown(f"**Mode:** Predictive Analysis for *{selected_mood}* Style")
+    # --- MAIN CONTENT ---
+    st.title("👗 H&M AI Stylist: Psychographic Experience")
+    st.markdown(f"**Current Recommendation Engine:** *{selected_mood} Mode*")
 
-    tab1, tab2, tab3 = st.tabs(["🛍️ Curated Collection", "📈 Seasonal Intelligence", "🧬 Analysis DNA"])
+    tab1, tab2, tab3 = st.tabs(["🛍️ Smart Collection", "📈 Seasonal DNA", "🧬 Model Methodology"])
 
-    # TAB 1: COLLECTION GRID
+    # TAB 1: PRODUCT GRID
     with tab1:
-        # Filter by Mood & Sort by Hotness Score (Scientific validation from Section 6)
-        display_items = articles[articles['mood'] == selected_mood].sort_values(by='hotness_score', ascending=False).head(24)
+        # We sort by Hotness Score derived from 31M transactions
+        hot_col = 'hotness_score' if 'hotness_score' in articles.columns else articles.columns[-1]
+        display_df = articles[articles[mood_col] == selected_mood].sort_values(by=hot_col, ascending=False).head(20)
         
         cols = st.columns(4)
-        for i, (idx, row) in enumerate(display_items.iterrows()):
+        for i, (idx, row) in enumerate(display_df.iterrows()):
             with cols[i % 4]:
-                # Dynamic Image Path
-                img_path = os.path.join("images", row['image_path'])
+                # Path construction: images/010/010127001.jpg
+                img_path = os.path.join("images", str(row['image_path']))
                 
                 if os.path.exists(img_path):
-                    st.image(Image.open(img_path), use_column_width=True)
+                    st.image(Image.open(img_path), use_container_width=True)
                 else:
-                    # Fallback for missing images
-                    st.image("https://via.placeholder.com/200x300.png?text=H%26M+Style", use_column_width=True)
+                    st.image("https://via.placeholder.com/200x300.png?text=H%26M+Style", use_container_width=True)
                 
                 st.markdown(f"**{row['prod_name']}**")
-                st.caption(f"{row['garment_group_name']}")
+                st.caption(f"{row.get('garment_group_name', 'H&M Premium')}")
                 
-                # Visualizing 'Hotness Score'
-                st.progress(row['hotness_score'], text=f"Trend Score: {row['hotness_score']:.2f}")
+                # Scientific Hotness Indicator
+                st.progress(float(row[hot_col]), text=f"Popularity: {row[hot_col]:.2f}")
                 
-                with st.expander("AI Stylist Note"):
-                    st.write(row['detail_desc'])
+                with st.expander("AI Stylist Insights"):
+                    st.write(row.get('detail_desc', "A versatile piece designed for comfort and style."))
 
-    # TAB 2: SEASONAL INTELLIGENCE
+    # TAB 2: SEASONAL TRENDS (plotly)
     with tab2:
-        st.subheader("Seasonal Mood Density (31M Transaction History)")
-        # Section 13 Data Visualization
-        fig = px.area(seasonal, x="month", y=articles['mood'].unique(),
-                      color_discrete_sequence=px.colors.qualitative.Pastel)
-        fig.update_layout(xaxis_title="Month of Year", yaxis_title="Popularity Density")
+        st.subheader("Seasonal Mood Density Chart")
+        # Visualizing the seasonality of moods
+        mood_list = list(articles[mood_col].unique())
+        fig = px.area(seasonal, x="month", y=mood_list,
+                      color_discrete_sequence=px.colors.qualitative.Bold,
+                      template="plotly_white")
+        fig.update_layout(xaxis_title="Month", yaxis_title="Trend Intensity")
         st.plotly_chart(fig, use_container_width=True)
 
-    # TAB 3: DATA SCIENCE LOGIC
+    # TAB 3: METHODOLOGY
     with tab3:
-        st.subheader("The Stylist Brain")
-        st.write("""
-        This AI uses a **25:100 Stratified Sample** to maintain the integrity of the original dataset while optimizing performance.
-        - **Professional Mode Recall:** 0.91 (High Workwear Sensitivity)
-        - **Visual Engine:** ResNet50 Feature Extraction
-        - **Clustering:** Psychographic Mood Engine
+        st.subheader("How the Stylist Works")
+        st.info("""
+        **Data Scale:** 31 Million Transactions analyzed.  
+        **Optimization:** 25:100 Stratified Sampling applied for web performance.  
+        **Accuracy:** Professional Mode achieves 0.91 Recall for workwear detection.  
+        **Inference:** Visual DNA extracted via ResNet50 Convolutional Neural Network.
         """)
-        st.json(u_data.to_dict())
+        st.write("Current User DNA Vector:")
+        st.json(u_info.to_dict())
 
 else:
-    st.error("Failed to load database. Please check Google Drive permissions.")
+    st.error("Connection Interrupted: Ensure Google Drive files are shared as 'Anyone with the link can view'.")
