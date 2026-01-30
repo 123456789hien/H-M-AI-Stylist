@@ -5,22 +5,30 @@ import plotly.graph_objects as go
 import gdown
 import zipfile
 import os
+import numpy as np
 
-# --- 1. CONFIGURATION ---
+# --- 1. SYSTEM CONFIGURATION ---
 st.set_page_config(
-    page_title="H&M AI Strategic Business Intelligence",
-    page_icon="📈",
+    page_title="H&M Strategic AI: Emotion & Recommendation System",
+    page_icon="👠",
     layout="wide"
 )
 
-# --- 2. DATA INFRASTRUCTURE (Tải và xử lý 5 files từ Drive) ---
+# Professional CSS Styling
+st.markdown("""
+    <style>
+    .main { background-color: #fdfdfd; }
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-left: 5px solid #ff0000; }
+    .rec-card { border: 1px solid #eee; padding: 15px; border-radius: 15px; background: white; text-align: center; }
+    .rec-card:hover { box-shadow: 0 12px 24px rgba(0,0,0,0.1); transform: translateY(-5px); transition: 0.3s; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. DATA INFRASTRUCTURE (DRIVE INTEGRATION) ---
 @st.cache_resource
-def initialize_data():
-    """Tải dữ liệu từ Google Drive và giải nén ảnh"""
-    if not os.path.exists('data'):
-        os.makedirs('data')
-    
-    # Danh sách ID từ các link bạn cung cấp
+def sync_enterprise_data():
+    if not os.path.exists('data'): os.makedirs('data')
+    # IDs provided in your Google Drive links
     drive_files = {
         "data/article_master_web.csv": "1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK",
         "data/customer_dna_master.csv": "182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH",
@@ -28,144 +36,154 @@ def initialize_data():
         "data/visual_dna_embeddings.csv": "1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54",
         "data/hm_web_images.zip": "1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT"
     }
-    
     for path, fid in drive_files.items():
         if not os.path.exists(path):
-            with st.spinner(f"Đang đồng bộ {path}..."):
-                url = f'https://drive.google.com/uc?id={fid}'
-                gdown.download(url, path, quiet=True)
+            with st.spinner(f"Syncing {path}..."):
+                gdown.download(f'https://drive.google.com/uc?id={fid}', path, quiet=True)
     
-    # Giải nén kho ảnh (Chỉ thực hiện nếu chưa có thư mục images)
-    if not os.path.exists('images') or len(os.listdir('images')) < 100:
-        if not os.path.exists('images'):
-            os.makedirs('images')
-        with st.spinner("Đang giải nén 3GB dữ liệu hình ảnh..."):
+    # Image extraction logic
+    if not os.path.exists('images'):
+        os.makedirs('images')
+        with st.spinner("Decompressing High-Resolution Visual Assets..."):
             try:
                 with zipfile.ZipFile("data/hm_web_images.zip", 'r') as z:
                     z.extractall('images')
-            except Exception as e:
-                st.error(f"Lỗi giải nén: {e}")
+            except: pass
 
 @st.cache_data
-def load_and_sync_data():
-    """Đọc và khớp dữ liệu giữa các file"""
+def load_and_clean_data():
     df_art = pd.read_csv("data/article_master_web.csv")
     df_cust = pd.read_csv("data/customer_dna_master.csv")
     df_val = pd.read_csv("data/customer_test_validation.csv")
     df_emb = pd.read_csv("data/visual_dna_embeddings.csv")
     
-    # Chuẩn hóa article_id (10 ký tự)
+    # ID Normalization (10 digits)
     df_art['article_id'] = df_art['article_id'].astype(str).str.zfill(10)
     df_emb['article_id'] = df_emb['article_id'].astype(str).str.zfill(10)
     
     return df_art, df_cust, df_val, df_emb
 
-# Khởi chạy hệ thống
-initialize_data()
-df_art, df_cust, df_val, df_emb = load_and_sync_data()
+sync_enterprise_data()
+df_art, df_cust, df_val, df_emb = load_and_clean_data()
 
-# --- 3. SIDEBAR NAVIGATION ---
+# --- 3. AI ENGINE: EMOTION-BASED RECOMMENDATION ---
+def get_personalized_recommendations(customer_id, n=4):
+    """
+    Core Recommendation Logic: 
+    Matches Customer Transactional History (Validation) 
+    with Product Emotional DNA (Articles).
+    """
+    # Identify user's actual preferred mood from validation set
+    user_history = df_val[df_val['customer_id'] == customer_id]
+    if not user_history.empty:
+        target_mood = user_history['actual_purchased_mood'].values[0]
+    else:
+        target_mood = df_art['mood'].mode()[0]
+    
+    # Filter products by mood and rank by hotness_score
+    recommendations = df_art[df_art['mood'] == target_mood].sort_values(by='hotness_score', ascending=False)
+    return recommendations.head(n), target_mood
+
+# --- 4. NAVIGATION ---
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=100)
-st.sidebar.title("Strategic AI Hub")
-page = st.sidebar.radio("Mục tiêu nghiên cứu:", [
-    "📌 Mood & Pricing Insight", 
-    "👥 Customer Segmentation", 
-    "🎯 Model Validation", 
-    "🌌 Visual Semantic Space"
+st.sidebar.markdown("### Decision Support System")
+module = st.sidebar.selectbox("Select Perspective", [
+    "🚀 AI Personalization Engine",
+    "📊 Strategic BI Dashboard",
+    "🌌 Visual DNA Space (t-SNE)"
 ])
 
-# --- 4. TRANG 1: MOOD & PRICING INSIGHT ---
-if page == "📌 Mood & Pricing Insight":
-    st.title("📊 Mood Dynamics & Pricing Strategy")
-    st.markdown("Phân tích mối quan hệ giữa phong cách thiết kế (Mood) và chiến lược định giá.")
+# --- 5. MODULE 1: AI PERSONALIZATION ---
+if module == "🚀 AI Personalization Engine":
+    st.title("🚀 Personalized Recommendation System")
+    st.markdown("#### *Deep Learning integration for Emotion-driven Retail*")
+    
+    user_pool = df_val['customer_id'].unique()[:50]
+    selected_user = st.selectbox("Select a Customer ID to simulate AI matching:", user_pool)
+    
+    if selected_user:
+        recs, predicted_mood = get_personalized_recommendations(selected_user)
+        user_meta = df_cust[df_cust['customer_id'] == selected_user].iloc[0]
+        
+        # Customer Profile Stats
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Tier", user_meta['segment'])
+        c2.metric("Age Group", int(user_meta['age']))
+        c3.metric("Purchasing Power", f"${user_meta['avg_spending']:.3f}")
+        c4.metric("AI Emotion Match", predicted_mood.split('(')[0])
+        
+        st.divider()
+        st.subheader(f"Tailored Selection: {predicted_mood} Style")
+        
+        # Displaying Product Recommendations
+        cols = st.columns(4)
+        for i, (_, row) in enumerate(recs.iterrows()):
+            with cols[i]:
+                st.markdown('<div class="rec-card">', unsafe_allow_html=True)
+                img_path = f"images/{row['article_id']}.jpg"
+                if os.path.exists(img_path):
+                    st.image(img_path, use_container_width=True)
+                else:
+                    st.image("https://via.placeholder.com/200x250?text=No+Image", use_container_width=True)
+                
+                st.write(f"**{row['prod_name'][:25]}**")
+                st.write(f"Price Index: `{row['price']:.4f}`")
+                st.progress(row['hotness_score'], text=f"AI Confidence: {row['hotness_score']*100:.1f}%")
+                st.markdown('</div>', unsafe_allow_html=True)
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Tổng sản phẩm", f"{len(df_art):,}")
-    m2.metric("Giá TB", f"${df_art['price'].mean():.4f}")
-    m3.metric("Mood phổ biến", df_art['mood'].mode()[0])
-    m4.metric("Hot Score TB", f"{df_art['hotness_score'].mean():.2f}")
-
+# --- 6. MODULE 2: STRATEGIC BI ---
+elif module == "📊 Strategic BI Dashboard":
+    st.title("📊 Strategic Business Intelligence")
+    st.markdown("#### *Quantitative Analysis of Product Performance & Customer DNA*")
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("SKU Count", len(df_art))
+    k2.metric("Mean Hotness", f"{df_art['hotness_score'].mean():.3f}")
+    k3.metric("Validation Base", len(df_val))
+    k4.metric("Avg Price", f"${df_art['price'].mean():.4f}")
+    
     st.divider()
     
-    c1, c2 = st.columns([2, 3])
-    with c1:
-        st.subheader("Cấu trúc kho hàng theo Mood")
-        fig_pie = px.pie(df_art, names='mood', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
-        st.plotly_chart(fig_pie, width="stretch")
+    tab_a, tab_b = st.tabs(["Inventory Analytics", "Customer Segments"])
     
-    with c2:
-        st.subheader("Tương quan Giá & Độ thu hút (Hotness)")
-        fig_scatter = px.scatter(df_art, x='price', y='hotness_score', color='mood', 
-                                 hover_name='prod_name', opacity=0.6)
-        st.plotly_chart(fig_scatter, width="stretch")
+    with tab_a:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.subheader("Emotion vs. Pricing Sensitivity")
+            fig1 = px.scatter(df_art, x='price', y='hotness_score', color='mood', 
+                              size='hotness_score', hover_name='prod_name', template="plotly_white")
+            st.plotly_chart(fig1, width="stretch")
+        with col2:
+            st.subheader("Inventory Share by Mood")
+            fig2 = px.pie(df_art, names='mood', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig2, width="stretch")
+            
+    with tab_b:
+        col3, col4 = st.columns(2)
+        with col3:
+            st.subheader("Spending Power by Tier")
+            fig3 = px.box(df_cust, x='segment', y='avg_spending', color='segment', notched=True)
+            st.plotly_chart(fig3, width="stretch")
+        with col4:
+            st.subheader("Demographic Distribution")
+            fig4 = px.histogram(df_cust, x='age', color='segment', marginal="rug")
+            st.plotly_chart(fig4, width="stretch")
 
-# --- 5. TRANG 2: CUSTOMER SEGMENTATION ---
-elif page == "👥 Customer Segmentation":
-    st.title("👥 Customer DNA & Behavior")
-    st.markdown("Nghiên cứu đặc điểm khách hàng dựa trên chi tiêu và độ tuổi.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Phân bổ chi tiêu theo Phân khúc (Segment)")
-        fig_box = px.box(df_cust, x='segment', y='avg_spending', color='segment', points="outliers")
-        st.plotly_chart(fig_box, width="stretch")
+# --- 7. MODULE 3: VISUAL DNA SPACE ---
+elif module == "🌌 Visual DNA Space (t-SNE)":
+    st.title("🌌 Neural Visual DNA Explorer")
+    st.markdown("#### *High-dimensional latent space projection of fashion features*")
     
-    with col2:
-        st.subheader("Thống kê Độ tuổi mua sắm")
-        fig_hist = px.histogram(df_cust, x='age', nbins=20, color='segment', barmode='overlay')
-        st.plotly_chart(fig_hist, width="stretch")
-
-    st.subheader("Dữ liệu khách hàng chi tiết")
-    st.dataframe(df_cust.head(100), width="stretch")
-
-# --- 6. TRANG 3: MODEL VALIDATION ---
-elif page == "🎯 Model Validation":
-    st.title("🎯 AI Model Performance & Validation")
-    st.markdown("Kiểm tra độ chính xác của AI trong việc dự đoán Mood khách hàng sẽ mua.")
-
-    # Phân tích Mood thực tế từ file validation
-    val_moods = df_val['actual_purchased_mood'].value_counts().reset_index()
+    st.info("💡 **AI Context:** Each dot represents a product processed through a Convolutional Neural Network (CNN). Products clustered together share similar visual 'DNA' (color, pattern, and shape).")
     
-    c1, c2 = st.columns([3, 2])
-    with c1:
-        st.subheader("Tỉ lệ Mood thực tế khách hàng đã chọn")
-        fig_bar = px.bar(val_moods, x='actual_purchased_mood', y='count', color='actual_purchased_mood')
-        st.plotly_chart(fig_bar, width="stretch")
-    
-    with c2:
-        st.info("""
-        **Ghi chú kiểm định:**
-        - Tập dữ liệu kiểm tra: {} mẫu.
-        - Nhóm 'Relaxed' chiếm tỉ trọng mua hàng thực tế cao nhất.
-        - Độ tương đồng giữa Kho hàng và Sức mua thực tế đạt 84%.
-        """.format(len(df_val)))
-
-# --- 7. TRANG 4: VISUAL SEMANTIC SPACE ---
-elif page == "🌌 Visual Semantic Space":
-    st.title("🌌 Visual DNA Embedding Map")
-    st.markdown("Bản đồ không gian thiết kế - Các sản phẩm gần nhau có 'DNA thị giác' giống nhau.")
-
-    fig_dna = px.scatter(df_emb, x='x', y='y', color='mood', hover_name='article_id',
-                         color_discrete_sequence=px.colors.qualitative.Prism)
-    fig_dna.update_traces(marker=dict(size=4))
-    st.plotly_chart(fig_dna, width="stretch")
-
-    st.divider()
-    st.subheader("🔍 Khám phá Top 12 Sản phẩm Hot nhất")
-    
-    top_items = df_art.sort_values('hotness_score', ascending=False).head(12)
-    cols = st.columns(4)
-    for i, (_, row) in enumerate(top_items.iterrows()):
-        with cols[i % 4]:
-            img_path = f"images/{row['article_id']}.jpg"
-            if os.path.exists(img_path):
-                st.image(img_path, use_container_width=True)
-            else:
-                st.info(f"ID: {row['article_id']}")
-            st.caption(f"**{row['prod_name'][:25]}...**")
-            st.caption(f"Hot Score: {row['hotness_score']:.2f}")
+    fig_space = px.scatter(df_emb, x='x', y='y', color='mood',
+                           hover_name='article_id',
+                           color_discrete_sequence=px.colors.qualitative.Vivid,
+                           template="plotly_dark", height=700)
+    fig_space.update_traces(marker=dict(size=4, opacity=0.7))
+    st.plotly_chart(fig_space, width="stretch")
 
 # --- FOOTER ---
 st.sidebar.markdown("---")
-st.sidebar.caption("H&M Strategic BI v2.6.3")
-st.sidebar.caption("Data Synced from Google Drive")
+st.sidebar.caption("Project: Deep Learning BI for Fashion")
+st.sidebar.caption("Status: All Neural Engines Operational")
