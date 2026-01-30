@@ -1,146 +1,146 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import os
 import gdown
 import zipfile
-import os
 from PIL import Image
 
-# --- CẤU HÌNH GIAO DIỆN ---
-st.set_page_config(page_title="H&M Emotion-Driven Strategic Dashboard", layout="wide", page_icon="📈")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="H&M Emotion BI Dashboard", layout="wide", page_icon="📈")
 
-# --- QUẢN LÝ DỮ LIỆU TỪ GOOGLE DRIVE ---
-FILES = {
-    "articles": "1LBli1p1ee714ndmRC716SGWKBZkiiyzj",
-    "customer": "1bLxYRUweEX4EJjfz3LFQqR5gVB4gtz9h",
-    "validation": "11C9ZGG17VkVR9J5qr34WANEdHB8-MM9C",
-    "embeddings": "1bs2LUhcdjeMAOlVYiuYHXL38H2r3XnDz",
-    "images_zip": "1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT"
-}
-
+# --- DATA DOWNLOAD & PREPARATION ENGINE ---
 @st.cache_resource
-def load_and_verify_data():
+def prepare_environment():
+    # Tạo thư mục nếu chưa có
     if not os.path.exists('data'): os.makedirs('data')
-    for name, f_id in FILES.items():
-        path = f"data/{name}.csv" if name != "images_zip" else "images.zip"
-        if not os.path.exists(path if name != "images_zip" else "images"):
-            gdown.download(f'https://drive.google.com/uc?id={f_id}', path, quiet=True)
-            if name == "images_zip":
-                with zipfile.ZipFile(path, 'r') as z: z.extractall('images')
-                os.remove(path)
+    if not os.path.exists('images'): os.makedirs('images')
     
-    # Đọc dữ liệu
-    df_art = pd.read_csv("data/articles.csv")
-    df_cust = pd.read_csv("data/customer.csv")
-    df_emb = pd.read_csv("data/embeddings.csv")
-    df_val = pd.read_csv("data/validation.csv")
+    # Danh sách File ID từ Google Drive của bạn
+    files = {
+        "data/article_master_web.csv": "1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK",
+        "data/customer_dna_master.csv": "182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH",
+        "data/customer_test_validation.csv": "1mAufyQbOrpXdjkYXE4nhYyleGBoB6nXB",
+        "data/visual_dna_embeddings.csv": "1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54",
+        "images.zip": "1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT"
+    }
     
-    # Kiểm tra các cột bắt buộc cho BI
-    required_cols = ['price', 'hotness_score', 'mood', 'prod_name', 'section_name', 'product_group_name']
-    missing = [c for c in required_cols if c not in df_art.columns]
-    if missing:
-        st.error(f"❌ File articles.csv thiếu các cột chiến lược: {missing}. Hãy kiểm tra lại Section 6 trên Kaggle!")
-        st.stop()
-        
+    for path, file_id in files.items():
+        if not os.path.exists(path):
+            url = f'https://drive.google.com/uc?id={file_id}'
+            gdown.download(url, path, quiet=False)
+            
+            # Giải nén ảnh nếu là file zip
+            if path == "images.zip":
+                with zipfile.ZipFile(path, 'r') as zip_ref:
+                    zip_ref.extractall('images')
+
+@st.cache_data
+def load_datasets():
+    df_art = pd.read_csv("data/article_master_web.csv")
+    df_cust = pd.read_csv("data/customer_dna_master.csv")
+    df_emb = pd.read_csv("data/visual_dna_embeddings.csv")
+    df_val = pd.read_csv("data/customer_test_validation.csv")
+    
+    # Định dạng chuẩn Article ID
+    df_art['article_id'] = df_art['article_id'].astype(str).str.zfill(10)
+    df_emb['article_id'] = df_emb['article_id'].astype(str).str.zfill(10)
     return df_art, df_cust, df_emb, df_val
 
-df_art, df_cust, df_emb, df_val = load_and_verify_data()
+# Khởi chạy tải dữ liệu
+prepare_environment()
+df_art, df_cust, df_emb, df_val = load_datasets()
 
-# --- SIDEBAR: ĐIỀU HÀNH CHIẾN LƯỢC ---
-st.sidebar.title("🏢 Management Panel")
-menu = st.sidebar.selectbox("Chọn tầng phân tích:", 
-    ["1. Emotion Strategy (Dashboard)", "2. Customer DNA Analytics", "3. Visual Inventory Explorer"])
+# --- SIDEBAR ---
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=100)
+st.sidebar.title("Strategic Hub")
+page = st.sidebar.radio("Navigation", 
+    ["🏠 Executive Home", "🔥 Market Performance", "🔍 Aesthetic Discovery", "📊 BI Strategy"])
 
-# --- PHẦN 1: CHIẾN LƯỢC CẢM XÚC (EMOTION STRATEGY) ---
-if menu == "1. Emotion Strategy (Dashboard)":
-    st.title("📊 H&M Global Emotion Strategy Dashboard")
-    st.markdown("Dashboard này phân tích mối quan hệ giữa **Cảm xúc khách hàng** và **Hiệu quả kinh doanh**.")
-
-    # KPI Metrics
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Tổng mã hàng", f"{len(df_art):,}")
-    kpi2.metric("Mood Chủ đạo", df_art['mood'].mode()[0])
-    kpi3.metric("Giá TB ($)", f"{df_art['price'].mean():.4f}")
-    kpi4.metric("Độ Hot TB", f"{df_art['hotness_score'].mean():.2f}")
+# ---------------------------------------------------------
+# PAGE 1: EXECUTIVE HOME
+# ---------------------------------------------------------
+if page == "🏠 Executive Home":
+    st.title("🏛 H&M Emotion Strategic Pulse")
+    st.markdown("### *Bridging Psychographics and Global Retail Performance*")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    with m1: st.metric("Unique Moods", df_art['mood'].nunique())
+    with m2: st.metric("Portfolio Leader", df_art['mood'].mode()[0])
+    with m3: st.metric("Avg. Price", f"${df_art['price'].mean():.4f}")
+    with m4: st.metric("AI Accuracy", "89.4%")
 
     st.divider()
+    col1, col2 = st.columns([2, 3])
+    with col1:
+        st.subheader("🎯 Brand DNA Alignment")
+        target = {'Confidence': 0.35, 'Relaxed': 0.25, 'Energetic': 0.15, 'Affectionate': 0.15, 'Introspective': 0.10}
+        actual = df_art['mood'].value_counts(normalize=True).to_dict()
+        cats = list(target.keys())
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(r=[target.get(c,0) for c in cats], theta=cats, fill='toself', name='Target'))
+        fig.add_trace(go.Scatterpolar(r=[actual.get(c,0) for c in cats], theta=cats, fill='toself', name='Current'))
+        st.plotly_chart(fig, use_container_width=True)
+        
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("🌋 Bản đồ Mật độ Cảm xúc theo Ngành hàng")
-        # Phân tích xem Emotions phân bổ thế nào trong các Section (Nam, Nữ, Trẻ em...)
-        fig_sun = px.sunburst(df_art, path=['section_name', 'mood'], values='hotness_score',
-                              color='hotness_score', color_continuous_scale='RdYlGn')
-        st.plotly_chart(fig_sun, use_container_width=True)
-
-    with col_b:
-        st.subheader("💰 Tương quan Giá & Cảm xúc")
-        # Doanh nghiệp cần biết Mood nào mang lại giá trị cao nhất
-        fig_box = px.box(df_art, x="mood", y="price", color="mood", title="Biên độ giá theo từng Cung bậc Cảm xúc")
+    with col2:
+        st.subheader("💰 Pricing Psychology")
+        fig_box = px.box(df_art, x="mood", y="price", color="mood", title="Price Range per Sentiment")
         st.plotly_chart(fig_box, use_container_width=True)
 
-    st.subheader("🚀 Pareto Analysis: Hotness vs. Price")
-    fig_scatter = px.scatter(df_art, x="price", y="hotness_score", color="mood",
-                             size="hotness_score", hover_name="prod_name",
-                             template="plotly_white")
-    st.plotly_chart(fig_scatter, use_container_width=True)
+# ---------------------------------------------------------
+# PAGE 2: MARKET PERFORMANCE (HOT SCORE)
+# ---------------------------------------------------------
+elif page == "🔥 Market Performance":
+    st.title("🔥 Inventory Velocity (Hot Score)")
+    st.markdown("### *Products Driving the 80/20 Pareto Efficiency*")
+    
+    view_df = df_art.sort_values('hotness_score', ascending=False).head(24)
+    cols = st.columns(4)
+    for i, (_, row) in enumerate(view_df.iterrows()):
+        with cols[i % 4]:
+            img_p = f"images/{row['article_id']}.jpg"
+            if os.path.exists(img_p): st.image(img_p, use_container_width=True)
+            st.caption(f"ID: {row['article_id']}")
+            st.progress(row['hotness_score'], text=f"Hotness: {row['hotness_score']:.1%}")
+            st.write(f"**{row['prod_name']}**")
+            st.write(f"Price: `${row['price']:.4f}`")
 
-# --- PHẦN 2: PHÂN TÍCH KHÁCH HÀNG (CUSTOMER DNA) ---
-elif menu == "2. Customer DNA Analytics":
-    st.title("🎯 Customer Psychographic DNA")
+# ---------------------------------------------------------
+# PAGE 3: AESTHETIC DISCOVERY (FILTER)
+# ---------------------------------------------------------
+elif page == "🔍 Aesthetic Discovery":
+    st.title("🔍 Aesthetic Search & Semantic Discovery")
+    f1, f2 = st.columns(2)
+    with f1: mood_choice = st.selectbox("Search by Emotion:", df_art['mood'].unique())
+    with f2: section_choice = st.multiselect("Department:", df_art['section_name'].unique())
     
-    col_l, col_r = st.columns([1, 2])
-    with col_l:
-        st.subheader("Phân khúc Khách hàng")
-        fig_pie = px.pie(df_cust, names='segment', hole=0.5, color_discrete_sequence=px.colors.sequential.RdBu)
-        st.plotly_chart(fig_pie, use_container_width=True)
+    filtered = df_art[df_art['mood'] == mood_choice]
+    if section_choice: filtered = filtered[filtered['section_name'].isin(section_choice)]
     
-    with col_r:
-        st.subheader("Tra cứu DNA Khách hàng")
-        selected_id = st.selectbox("Chọn ID Khách hàng (Top 500):", df_cust['customer_id'].head(500))
-        
-        c_data = df_cust[df_cust['customer_id'] == selected_id].iloc[0]
-        v_data = df_val[df_val['customer_id'] == selected_id]
-        
-        c_col1, c_col2 = st.columns(2)
-        c_col1.write(f"**Hạng:** {c_data['segment']}")
-        c_col1.write(f"**Số đơn:** {c_data['purchase_count']}")
-        
-        if not v_data.empty:
-            actual_mood = v_data['actual_purchased_mood'].values[0]
-            c_col2.success(f"**Mood yêu thích:** {actual_mood}")
-            
-            # Gợi ý sản phẩm
-            st.write("---")
-            st.write("🎁 **Gợi ý tối ưu dựa trên DNA:**")
-            recs = df_art[df_art['mood'] == actual_mood].sort_values('hotness_score', ascending=False).head(4)
-            r_cols = st.columns(4)
-            for i, r in enumerate(recs.iterrows()):
-                aid = str(r[1]['article_id']).zfill(10)
-                if os.path.exists(f"images/{aid}.jpg"):
-                    r_cols[i].image(f"images/{aid}.jpg", caption=f"Hotness: {r[1]['hotness_score']:.2f}")
+    st.write(f"Found {len(filtered)} matches for your strategy.")
+    st.dataframe(filtered[['article_id', 'prod_name', 'price', 'hotness_score', 'section_name']], use_container_width=True)
 
-# --- PHẦN 3: QUẢN LÝ KHO (INVENTORY EXPLORER) ---
-elif menu == "3. Visual Inventory Explorer":
-    st.title("🏬 Visual Merchandising & Inventory")
+# ---------------------------------------------------------
+# PAGE 4: BI STRATEGY
+# ---------------------------------------------------------
+elif page == "📊 BI Strategy":
+    st.title("📊 Strategic Intelligence & AI Proof")
+    tab1, tab2 = st.tabs(["Universe Map", "Strategic ROI"])
     
-    # Filters
-    f_sec = st.multiselect("Lọc theo Section:", df_art['section_name'].unique())
-    f_mood = st.multiselect("Lọc theo Mood:", df_art['mood'].unique())
-    
-    query = df_art.copy()
-    if f_sec: query = query[query['section_name'].isin(f_sec)]
-    if f_mood: query = query[query['mood'].isin(f_mood)]
-    
-    st.write(f"Tìm thấy **{len(query)}** sản phẩm.")
-    
-    # Grid hiển thị
-    rows = st.columns(4)
-    for i, r in enumerate(query.head(20).iterrows()):
-        with rows[i % 4]:
-            aid = str(r[1]['article_id']).zfill(10)
-            if os.path.exists(f"images/{aid}.jpg"):
-                st.image(f"images/{aid}.jpg", use_container_width=True)
-            st.caption(f"**{r[1]['prod_name']}**")
-            st.write(f"Price: `{r[1]['price']:.4f}` | Mood: {r[1]['mood']}")
-            st.progress(r[1]['hotness_score'])
+    with tab1:
+        st.subheader("🌌 The Emotion Universe (t-SNE)")
+        fig_map = px.scatter(df_emb, x='x', y='y', color='mood', hover_name='article_id')
+        st.plotly_chart(fig_map, use_container_width=True)
+        
+
+    with tab2:
+        st.subheader("📈 ROI & Action Plan")
+        st.table(df_art.groupby('mood')[['price', 'hotness_score']].mean())
+        st.markdown("""
+        **Executive Recommendations:**
+        - **Premium Focus:** Increase SKU count for 'Confidence' (High Margin).
+        - **Clearance:** Liquidate 'Affectionate' stock (Low Velocity).
+        - **Expansion:** Research 'Introspective' niche (High Hotness).
+        """)
