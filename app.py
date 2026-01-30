@@ -6,29 +6,18 @@ import gdown
 import zipfile
 import os
 
-# --- 1. CONFIG & STYLING ---
-st.set_page_config(
-    page_title="H&M AI Strategic Business Intelligence",
-    page_icon="📈",
-    layout="wide"
-)
+# --- 1. CẤU HÌNH HỆ THỐNG ---
+# Thiết lập trang để triệt tiêu các cảnh báo về giao diện cũ
+st.set_page_config(page_title="H&M Emotion Intelligence", layout="wide")
 
-# Tối ưu giao diện bằng CSS
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 2. DATA INFRASTRUCTURE (Tối ưu cho 3GB dữ liệu) ---
+# --- 2. HÀM XỬ LÝ DỮ LIỆU (Tối ưu RAM cho file 3GB) ---
 @st.cache_resource
-def initialize_assets():
-    """Tải và giải nén dữ liệu từ Google Drive"""
-    if not os.path.exists('data'):
+def download_and_unzip():
+    """Tải và giải nén: Chỉ thực hiện một lần duy nhất để tránh treo máy"""
+    if not os.path.exists('data'): 
         os.makedirs('data')
     
-    # Danh sách ID file từ Drive của bạn
+    # Danh sách file từ Google Drive của bạn
     files = {
         "data/article_master_web.csv": "1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK",
         "data/visual_dna_embeddings.csv": "1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54",
@@ -39,105 +28,101 @@ def initialize_assets():
         if not os.path.exists(path):
             with st.spinner(f"Đang tải {path}..."):
                 gdown.download(f'https://drive.google.com/uc?id={fid}', path, quiet=True)
-    
-    # Giải nén ảnh (Chỉ làm 1 lần)
+            
+    # Giải nén ảnh: Kiểm tra nếu chưa có thư mục images hoặc thư mục rỗng mới giải nén
     if not os.path.exists('images') or len(os.listdir('images')) < 100:
-        if not os.path.exists('images'):
+        if not os.path.exists('images'): 
             os.makedirs('images')
-        with st.spinner("Đang giải nén 3GB kho ảnh... (Vui lòng đợi 1-2 phút)"):
-            with zipfile.ZipFile("images.zip", 'r') as z:
-                z.extractall('images')
+        with st.spinner("Đang giải nén kho ảnh 3GB... (Vui lòng đợi 1-2 phút)"):
+            try:
+                with zipfile.ZipFile("images.zip", 'r') as z:
+                    z.extractall('images')
+            except Exception as e:
+                st.error(f"Lỗi khi giải nén: {e}")
 
 @st.cache_data
-def load_and_process_data():
-    """Đọc và làm sạch dữ liệu"""
-    df_art = pd.read_csv("data/article_master_web.csv")
-    df_emb = pd.read_csv("data/visual_dna_embeddings.csv")
+def load_processed_data():
+    """Đọc dữ liệu và chuẩn hóa ID sản phẩm"""
+    df_a = pd.read_csv("data/article_master_web.csv")
+    df_e = pd.read_csv("data/visual_dna_embeddings.csv")
     
-    # Chuẩn hóa ID sản phẩm (thêm số 0 ở đầu cho đủ 10 ký tự)
-    df_art['article_id'] = df_art['article_id'].astype(str).str.zfill(10)
-    df_emb['article_id'] = df_emb['article_id'].astype(str).str.zfill(10)
+    # Đảm bảo article_id luôn có 10 chữ số (thêm số 0 ở đầu nếu thiếu)
+    df_a['article_id'] = df_a['article_id'].astype(str).str.zfill(10)
+    df_e['article_id'] = df_e['article_id'].astype(str).str.zfill(10)
     
-    return df_art, df_emb
+    return df_a, df_e
 
-# Thực thi khởi tạo
-initialize_assets()
-df_art, df_emb = load_and_process_data()
+# Thực thi nạp dữ liệu
+with st.spinner("🚀 Hệ thống đang khởi động dữ liệu chiến lược..."):
+    download_and_unzip()
+    df_art, df_emb = load_processed_data()
 
-# --- 3. SIDEBAR NAVIGATION ---
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=100)
-st.sidebar.title("H&M AI Stylist BI")
-menu = st.sidebar.selectbox(
-    "Menu Chiến Lược",
-    ["📊 Dashboard Tổng Quan", "🔥 Top Performance (Pareto)", "🌌 Bản đồ Visual DNA"]
-)
+# --- 3. GIAO DIỆN CHÍNH (Sử dụng chuẩn hiển thị mới nhất 2026) ---
+st.title("🏛 H&M Emotion Strategic Hub")
 
-# --- 4. TRANG 1: DASHBOARD TỔNG QUAN ---
-if menu == "📊 Dashboard Tổng Quan":
-    st.title("🏛 Executive Pulse: Mood & Market Dynamics")
-    
-    # KPIs hàng đầu
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Tổng sản phẩm", len(df_art))
-    m2.metric("Mood dẫn đầu", df_art['mood'].mode()[0])
+# Menu điều hướng bằng Tabs
+tab1, tab2, tab3 = st.tabs(["📊 BI Dashboard", "🔥 Top Performance", "🌌 AI Visual Map"])
+
+# --- TAB 1: DASHBOARD TỔNG QUAN ---
+with tab1:
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Tổng số mặt hàng", f"{len(df_art):,}")
+    m2.metric("Mood chủ đạo", df_art['mood'].mode()[0])
     m3.metric("Giá trung bình", f"${df_art['price'].mean():.4f}")
-    m4.metric("Chỉ số AI", "89.4%")
-
+    
     st.divider()
-
-    c1, c2 = st.columns([2, 3])
-    with c1:
+    
+    col_a, col_b = st.columns([2, 3])
+    with col_a:
         st.subheader("🎯 Brand DNA Alignment")
         target = {'Confidence': 0.35, 'Relaxed': 0.25, 'Energetic': 0.15, 'Affectionate': 0.15, 'Introspective': 0.10}
         actual = df_art['mood'].value_counts(normalize=True).to_dict()
-        cats = list(target.keys())
+        categories = list(target.keys())
         
         fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(r=[target.get(c,0) for c in cats], theta=cats, fill='toself', name='Target DNA'))
-        fig_radar.add_trace(go.Scatterpolar(r=[actual.get(c,0) for c in cats], theta=cats, fill='toself', name='Actual Inventory'))
+        fig_radar.add_trace(go.Scatterpolar(r=[target.get(c,0) for c in categories], theta=categories, fill='toself', name='Mục tiêu'))
+        fig_radar.add_trace(go.Scatterpolar(r=[actual.get(c,0) for c in categories], theta=categories, fill='toself', name='Thực tế'))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 0.5])), height=400)
         st.plotly_chart(fig_radar, use_container_width=True)
 
-    with c2:
-        st.subheader("💰 Pricing Psychology per Mood")
-        fig_box = px.box(df_art, x="mood", y="price", color="mood", points="all")
+    with col_b:
+        st.subheader("💰 Pricing Distribution per Mood")
+        fig_box = px.box(df_art, x="mood", y="price", color="mood", points="outliers")
         st.plotly_chart(fig_box, use_container_width=True)
 
-# --- 5. TRANG 2: TOP PERFORMANCE ---
-elif menu == "🔥 Top Performance (Pareto)":
-    st.title("🔥 Inventory Velocity (Hot Score)")
-    st.info("Hiển thị các sản phẩm có chỉ số 'Hotness' cao nhất dựa trên phân tích AI.")
-
-    selected_mood = st.multiselect("Lọc theo Mood:", df_art['mood'].unique(), default=df_art['mood'].unique())
+# --- TAB 2: TOP PERFORMANCE (Hiển thị ảnh an toàn) ---
+with tab2:
+    st.subheader("Top 12 Sản phẩm Hot nhất (Phân tích Pareto)")
     
-    # Lấy top 16 sản phẩm để không làm nặng trình duyệt
-    top_df = df_art[df_art['mood'].isin(selected_mood)].sort_values('hotness_score', ascending=False).head(16)
+    # Lọc và lấy top 12 để tránh quá tải trình duyệt
+    top_df = df_art.sort_values('hotness_score', ascending=False).head(12)
     
-    cols = st.columns(4)
-    for i, (_, row) in enumerate(top_df.iterrows()):
-        with cols[i % 4]:
-            img_path = f"images/{row['article_id']}.jpg"
-            if os.path.exists(img_path):
-                st.image(img_path, use_container_width=True)
+    grid = st.columns(4)
+    for idx, (_, row) in enumerate(top_df.iterrows()):
+        with grid[idx % 4]:
+            img_file = f"images/{row['article_id']}.jpg"
+            if os.path.exists(img_file):
+                # use_container_width=True là chuẩn mới nhất để không bị lỗi Logs
+                st.image(img_file, caption=row['prod_name'], use_container_width=True)
             else:
-                st.image("https://via.placeholder.com/200x300?text=No+Image", use_container_width=True)
+                st.warning(f"Thiếu ảnh: {row['article_id']}")
             
-            st.write(f"**{row['prod_name']}**")
-            st.progress(row['hotness_score'], text=f"Hot Score: {row['hotness_score']:.2f}")
-            st.caption(f"Price: {row['price']:.4f} | Mood: {row['mood']}")
+            st.caption(f"Mood: {row['mood']} | Score: {row['hotness_score']:.2f}")
 
-# --- 6. TRANG 3: VISUAL DNA ---
-elif menu == "🌌 Bản đồ Visual DNA":
-    st.title("🌌 Semantic Image Space")
-    st.markdown("Mỗi điểm trên biểu đồ đại diện cho một sản phẩm. Các sản phẩm gần nhau có phong cách thiết kế tương đồng.")
+# --- TAB 3: VISUAL DNA CLUSTERS ---
+with tab3:
+    st.subheader("🌌 Không gian Visual DNA (t-SNE)")
+    st.info("Các điểm gần nhau đại diện cho các sản phẩm có thiết kế tương đồng.")
     
-    fig_scatter = px.scatter(
+    fig_map = px.scatter(
         df_emb, x='x', y='y', color='mood',
         hover_name='article_id',
-        title="Visual DNA Clusters (t-SNE Analysis)",
-        color_discrete_sequence=px.colors.qualitative.Bold
+        color_discrete_sequence=px.colors.qualitative.Safe
     )
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    st.plotly_chart(fig_map, use_container_width=True)
 
+# Sidebar bổ sung
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=80)
 st.sidebar.markdown("---")
-st.sidebar.caption("BI Version 2.6 | Data: 2026 Strategy")
+st.sidebar.success("Dữ liệu đã sẵn sàng!")
+st.sidebar.caption("Phiên bản BI 2.6.1 | Đã tối ưu RAM")
