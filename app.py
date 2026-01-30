@@ -1,119 +1,114 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from PIL import Image
-import requests
-from io import BytesIO
+import gdown
 import zipfile
 import os
+from PIL import Image
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="H&M AI Stylist Pro", page_icon="👗", layout="wide")
+st.set_page_config(page_title="H&M AI Stylist Universe", layout="wide")
 
-# --- 2. GOOGLE DRIVE ID CONFIG ---
-FILE_IDS = {
-    "article_csv": "1qYtRpJU9yKdqrcvmE7wUFC-QmU87NSyv",
-    "customer_dna": "1ZrEvTcVb0DKS6cIv4vZf-jod9EGH4srK",
-    "seasonal_trends": "1vS2vDuhHCifie9wRLOoa70t02UUOI0bs",
-    "images_zip": "1X5q8o8fnR-MGBjBzhZf5gH8URNKD2uJA"
+# --- CẤU HÌNH ID FILE TỪ GOOGLE DRIVE ---
+FILES = {
+    "articles": "1LBli1p1ee714ndmRC716SGWKBZkiiyzj",
+    "customer": "1bLxYRUweEX4EJjfz3LFQqR5gVB4gtz9h",
+    "validation": "11C9ZGG17VkVR9J5qr34WANEdHB8-MM9C",
+    "embeddings": "1bs2LUhcdjeMAOlVYiuYHXL38H2r3XnDz",
+    "images_zip": "1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT"
 }
 
-# Robust Download Function to bypass Google Drive scan warnings
-def download_file_from_google_drive(file_id):
-    URL = "https://docs.google.com/uc?export=download&confirm=t"
-    session = requests.Session()
-    response = session.get(URL, params={'id': file_id}, stream=True)
-    return response.content
-
-# --- 3. DATA LOADING WITH VALIDATION ---
-@st.cache_data(show_spinner=False)
-def load_and_validate_data():
-    try:
-        # Loading via bytes to ensure stability
-        articles = pd.read_csv(BytesIO(download_file_from_google_drive(FILE_IDS["article_csv"])))
-        dna = pd.read_csv(BytesIO(download_file_from_google_drive(FILE_IDS["customer_dna"])))
-        seasonal = pd.read_csv(BytesIO(download_file_from_google_drive(FILE_IDS["seasonal_trends"])))
-        
-        for df in [articles, dna, seasonal]:
-            df.columns = df.columns.str.strip()
-            if 'Unnamed: 0' in df.columns:
-                df.drop(columns=['Unnamed: 0'], inplace=True)
-        
-        # Check if DNA is empty
-        if dna.empty:
-            st.error("The DNA database is empty. Please check your CSV file.")
-            return None, None, None
-            
-        return articles, dna, seasonal
-    except Exception as e:
-        st.error(f"⚠️ Connection Error: {e}")
-        return None, None, None
-
-@st.cache_resource(show_spinner=False)
-def extract_images():
-    if not os.path.exists("images"):
-        os.makedirs("images")
-        try:
-            content = download_file_from_google_drive(FILE_IDS["images_zip"])
-            with zipfile.ZipFile(BytesIO(content)) as z:
-                z.extractall("images")
-        except:
-            pass 
-    return True
-
-# --- 4. APP EXECUTION ---
-articles, dna, seasonal = load_and_validate_data()
-extract_images()
-
-if articles is not None and not dna.empty:
-    st.sidebar.title("Stylist Control Center")
+@st.cache_resource
+def load_data_and_images():
+    # Tạo thư mục data và images nếu chưa có
+    if not os.path.exists('data'): os.makedirs('data')
     
-    # Identify Columns Safely
-    id_col = next((c for c in dna.columns if 'id' in c.lower()), dna.columns[0])
+    # Tải các file CSV
+    for name, file_id in FILES.items():
+        if name != "images_zip":
+            path = f"data/{name}.csv"
+            if not os.path.exists(path):
+                gdown.download(f'https://drive.google.com/uc?id={file_id}', path, quiet=True)
     
-    # Filter out nulls from selection
-    user_options = dna[id_col].dropna().unique()[:50]
+    # Tải và giải nén ảnh (3GB - Quá trình này có thể mất vài phút lần đầu)
+    if not os.path.exists('images'):
+        st.info("📦 Đang tải kho ảnh 3GB từ Google Drive... Vui lòng đợi trong giây lát.")
+        zip_path = "images.zip"
+        gdown.download(f'https://drive.google.com/uc?id={FILES["images_zip"]}', zip_path, quiet=False)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall('images')
+        os.remove(zip_path)
     
-    if len(user_options) > 0:
-        user_id = st.sidebar.selectbox("👤 Select Client DNA Signature", user_options)
-        
-        # Safe filtering to prevent IndexError
-        user_rows = dna[dna[id_col] == user_id]
-        if not user_rows.empty:
-            u_info = user_rows.iloc[0]
-            
-            # Show Metrics
-            val_col = next((c for c in dna.columns if 'price' in c.lower() or 'val' in c.lower()), dna.columns[1])
-            st.sidebar.metric("Price affinity", f"${u_info[val_col]:.2f}")
-            
-            # Mood selection
-            mood_col = next((c for c in articles.columns if 'mood' in c.lower()), articles.columns[0])
-            selected_mood = st.sidebar.radio("Target Mood", articles[mood_col].unique())
+    return (pd.read_csv("data/articles.csv"), 
+            pd.read_csv("data/customer.csv"), 
+            pd.read_csv("data/embeddings.csv"),
+            pd.read_csv("data/validation.csv"))
 
-            # --- MAIN TABS ---
-            tab1, tab2 = st.tabs(["🛍️ Collection", "📈 Trends"])
+# Load dữ liệu
+try:
+    df_articles, df_customer, df_embeddings, df_val = load_data_and_images()
+except Exception as e:
+    st.error(f"Lỗi tải dữ liệu: {e}")
+    st.stop()
+
+# --- GIAO DIỆN ---
+st.title("👗 H&M AI Stylist: The Emotion Universe")
+st.markdown("---")
+
+# Sidebar: Bộ lọc
+st.sidebar.header("🔍 Bộ lọc Showroom")
+selected_mood = st.sidebar.multiselect("Chọn phong cách (Mood):", df_articles['mood'].unique(), default=df_articles['mood'].unique()[:2])
+min_hotness = st.sidebar.slider("Độ Hot tối thiểu (Pareto Score):", 0.0, 1.0, 0.5)
+
+# Layout chính
+tab1, tab2, tab3 = st.tabs(["🌌 Vũ trụ cảm xúc", "👤 Khách hàng & Gợi ý", "🛍️ Showroom"])
+
+with tab1:
+    st.subheader("Bản đồ định vị phong cách (t-SNE)")
+    fig = px.scatter(df_embeddings, x='x', y='y', color='mood', 
+                     hover_data=['article_id'],
+                     title="Di chuột để xem ID sản phẩm",
+                     color_discrete_sequence=px.colors.qualitative.Safe)
+    st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    col_input, col_res = st.columns([1, 2])
+    with col_input:
+        c_id = st.text_input("Nhập Customer ID:")
+        if c_id:
+            # Tra cứu thông tin khách hàng
+            c_info = df_customer[df_customer['customer_id'] == c_id]
+            if not c_info.empty:
+                st.success(f"Phân khúc: {c_info['segment'].values[0]}")
+                st.write(f"Độ tuổi: {c_info['age'].values[0]}")
+                
+                # Kiểm chứng từ tập Test (Section 10)
+                c_val = df_val[df_val['customer_id'] == c_id]
+                if not c_val.empty:
+                    st.warning(f"Gu thực tế (Test Set): {c_val['actual_purchased_mood'].values[0]}")
+            else:
+                st.error("Không tìm thấy ID khách hàng này.")
+
+    with col_res:
+        if c_id and not c_info.empty:
+            st.subheader("Gợi ý từ AI Stylist")
+            mood_pref = c_val['actual_purchased_mood'].values[0] if not c_val.empty else "Relaxed"
+            recs = df_articles[(df_articles['mood'] == mood_pref) & (df_articles['hotness_score'] >= 0.7)].head(4)
             
-            with tab1:
-                st.header(f"Curated {selected_mood} Styles")
-                # Grid view
-                display_df = articles[articles[mood_col] == selected_mood].head(12)
-                cols = st.columns(4)
-                for i, (idx, row) in enumerate(display_df.iterrows()):
-                    with cols[i % 4]:
-                        img_path = os.path.join("images", str(row.get('image_path', '')))
-                        if os.path.exists(img_path):
-                            st.image(Image.open(img_path), use_container_width=True)
-                        else:
-                            st.image("https://via.placeholder.com/200", use_container_width=True)
-                        st.write(f"**{row.get('prod_name', 'H&M Item')}**")
-            
-            with tab2:
-                st.subheader("Seasonal Intelligence")
-                fig = px.line(seasonal, x=seasonal.columns[0], y=seasonal.columns[1:])
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.sidebar.warning("User data not found.")
-    else:
-        st.error("No valid IDs found in the DNA file.")
-else:
-    st.warning("Please verify that your Google Drive files are shared as 'Anyone with the link can view'.")
+            cols = st.columns(4)
+            for i, (idx, row) in enumerate(recs.iterrows()):
+                aid = str(row['article_id']).zfill(10)
+                img_path = f"images/{aid}.jpg"
+                if os.path.exists(img_path):
+                    cols[i].image(Image.open(img_path), caption=f"Hotness: {row['hotness_score']:.2f}")
+
+with tab3:
+    st.subheader("Khám phá bộ sưu tập")
+    display_items = df_articles[(df_articles['mood'].isin(selected_mood)) & (df_articles['hotness_score'] >= min_hotness)].head(20)
+    
+    grid = st.columns(5)
+    for i, (idx, row) in enumerate(display_items.iterrows()):
+        aid = str(row['article_id']).zfill(10)
+        img_path = f"images/{aid}.jpg"
+        if os.path.exists(img_path):
+            grid[i % 5].image(Image.open(img_path), use_column_width=True)
+            grid[i % 5].caption(f"ID: {aid} | {row['mood']}")
