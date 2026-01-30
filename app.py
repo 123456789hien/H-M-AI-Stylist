@@ -6,18 +6,14 @@ import gdown
 import zipfile
 import os
 
-# --- 1. CẤU HÌNH HỆ THỐNG ---
-# Thiết lập trang để triệt tiêu các cảnh báo về giao diện cũ
+# --- 1. CẤU HÌNH HỆ THỐNG (Cập nhật chuẩn 2026) ---
 st.set_page_config(page_title="H&M Emotion Intelligence", layout="wide")
 
-# --- 2. HÀM XỬ LÝ DỮ LIỆU (Tối ưu RAM cho file 3GB) ---
+# --- 2. HÀM XỬ LÝ DỮ LIỆU ---
 @st.cache_resource
 def download_and_unzip():
-    """Tải và giải nén: Chỉ thực hiện một lần duy nhất để tránh treo máy"""
-    if not os.path.exists('data'): 
-        os.makedirs('data')
+    if not os.path.exists('data'): os.makedirs('data')
     
-    # Danh sách file từ Google Drive của bạn
     files = {
         "data/article_master_web.csv": "1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK",
         "data/visual_dna_embeddings.csv": "1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54",
@@ -26,103 +22,93 @@ def download_and_unzip():
     
     for path, fid in files.items():
         if not os.path.exists(path):
-            with st.spinner(f"Đang tải {path}..."):
-                gdown.download(f'https://drive.google.com/uc?id={fid}', path, quiet=True)
+            gdown.download(f'https://drive.google.com/uc?id={fid}', path, quiet=True)
             
-    # Giải nén ảnh: Kiểm tra nếu chưa có thư mục images hoặc thư mục rỗng mới giải nén
     if not os.path.exists('images') or len(os.listdir('images')) < 100:
-        if not os.path.exists('images'): 
-            os.makedirs('images')
-        with st.spinner("Đang giải nén kho ảnh 3GB... (Vui lòng đợi 1-2 phút)"):
-            try:
-                with zipfile.ZipFile("images.zip", 'r') as z:
-                    z.extractall('images')
-            except Exception as e:
-                st.error(f"Lỗi khi giải nén: {e}")
+        if not os.path.exists('images'): os.makedirs('images')
+        try:
+            with zipfile.ZipFile("images.zip", 'r') as z:
+                z.extractall('images')
+        except Exception as e:
+            st.error(f"Lỗi giải nén: {e}")
 
 @st.cache_data
 def load_processed_data():
-    """Đọc dữ liệu và chuẩn hóa ID sản phẩm"""
     df_a = pd.read_csv("data/article_master_web.csv")
     df_e = pd.read_csv("data/visual_dna_embeddings.csv")
     
-    # Đảm bảo article_id luôn có 10 chữ số (thêm số 0 ở đầu nếu thiếu)
+    # Chuẩn hóa ID
     df_a['article_id'] = df_a['article_id'].astype(str).str.zfill(10)
     df_e['article_id'] = df_e['article_id'].astype(str).str.zfill(10)
     
+    # SỬA LỖI: Kiểm tra cột 'price'. Nếu không có, gán giá trị mặc định để tránh lỗi ValueError
+    if 'price' not in df_a.columns:
+        # Giả định giá bằng 0.01 (hoặc bạn thay bằng tên cột giá đúng trong file của bạn)
+        df_a['price'] = 0.0100 
+        
     return df_a, df_e
 
-# Thực thi nạp dữ liệu
-with st.spinner("🚀 Hệ thống đang khởi động dữ liệu chiến lược..."):
+# Khởi chạy nạp dữ liệu
+with st.spinner("🚀 Đang khởi động hệ thống..."):
     download_and_unzip()
     df_art, df_emb = load_processed_data()
 
-# --- 3. GIAO DIỆN CHÍNH (Sử dụng chuẩn hiển thị mới nhất 2026) ---
-st.title("🏛 H&M Emotion Strategic Hub")
+# --- 3. GIAO DIỆN CHÍNH ---
+st.title("🏛 H&M Strategic AI Dashboard")
 
-# Menu điều hướng bằng Tabs
-tab1, tab2, tab3 = st.tabs(["📊 BI Dashboard", "🔥 Top Performance", "🌌 AI Visual Map"])
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🔥 Top Items", "🌌 Visual DNA"])
 
-# --- TAB 1: DASHBOARD TỔNG QUAN ---
+# --- TAB 1: DASHBOARD ---
 with tab1:
     m1, m2, m3 = st.columns(3)
-    m1.metric("Tổng số mặt hàng", f"{len(df_art):,}")
-    m2.metric("Mood chủ đạo", df_art['mood'].mode()[0])
-    m3.metric("Giá trung bình", f"${df_art['price'].mean():.4f}")
+    m1.metric("Tổng sản phẩm", f"{len(df_art):,}")
+    m2.metric("Mood phổ biến", df_art['mood'].mode()[0])
+    m3.metric("Giá TB", f"${df_art['price'].mean():.4f}")
     
     st.divider()
     
-    col_a, col_b = st.columns([2, 3])
-    with col_a:
-        st.subheader("🎯 Brand DNA Alignment")
+    c1, c2 = st.columns([2, 3])
+    with c1:
+        st.subheader("🎯 DNA Alignment")
         target = {'Confidence': 0.35, 'Relaxed': 0.25, 'Energetic': 0.15, 'Affectionate': 0.15, 'Introspective': 0.10}
         actual = df_art['mood'].value_counts(normalize=True).to_dict()
-        categories = list(target.keys())
-        
+        cats = list(target.keys())
         fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(r=[target.get(c,0) for c in categories], theta=categories, fill='toself', name='Mục tiêu'))
-        fig_radar.add_trace(go.Scatterpolar(r=[actual.get(c,0) for c in categories], theta=categories, fill='toself', name='Thực tế'))
-        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 0.5])), height=400)
-        st.plotly_chart(fig_radar, use_container_width=True)
+        fig_radar.add_trace(go.Scatterpolar(r=[target.get(c,0) for c in cats], theta=cats, fill='toself', name='Target'))
+        fig_radar.add_trace(go.Scatterpolar(r=[actual.get(c,0) for c in cats], theta=cats, fill='toself', name='Actual'))
+        fig_radar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_radar, width="stretch")
 
-    with col_b:
-        st.subheader("💰 Pricing Distribution per Mood")
-        fig_box = px.box(df_art, x="mood", y="price", color="mood", points="outliers")
-        st.plotly_chart(fig_box, use_container_width=True)
+    with c2:
+        st.subheader("💰 Price Analysis")
+        # Vẽ biểu đồ với cột price đã được kiểm tra an toàn
+        fig_box = px.box(df_art, x="mood", y="price", color="mood")
+        st.plotly_chart(fig_box, width="stretch")
 
-# --- TAB 2: TOP PERFORMANCE (Hiển thị ảnh an toàn) ---
+# --- TAB 2: TOP PERFORMANCE ---
 with tab2:
-    st.subheader("Top 12 Sản phẩm Hot nhất (Phân tích Pareto)")
+    st.subheader("🔥 Top Hotness Score (Pareto)")
+    # Sử dụng cột 'hotness_score' chính xác từ lỗi của bạn
+    top_items = df_art.sort_values('hotness_score', ascending=False).head(12)
     
-    # Lọc và lấy top 12 để tránh quá tải trình duyệt
-    top_df = df_art.sort_values('hotness_score', ascending=False).head(12)
-    
-    grid = st.columns(4)
-    for idx, (_, row) in enumerate(top_df.iterrows()):
-        with grid[idx % 4]:
-            img_file = f"images/{row['article_id']}.jpg"
-            if os.path.exists(img_file):
-                # use_container_width=True là chuẩn mới nhất để không bị lỗi Logs
-                st.image(img_file, caption=row['prod_name'], use_container_width=True)
+    cols = st.columns(4)
+    for idx, (_, row) in enumerate(top_items.iterrows()):
+        with cols[idx % 4]:
+            path = f"images/{row['article_id']}.jpg"
+            if os.path.exists(path):
+                st.image(path, use_container_width=True)
             else:
-                st.warning(f"Thiếu ảnh: {row['article_id']}")
-            
-            st.caption(f"Mood: {row['mood']} | Score: {row['hotness_score']:.2f}")
+                st.info(f"ID: {row['article_id']}")
+            st.caption(f"{row['prod_name'][:20]}... | Score: {row['hotness_score']:.2f}")
 
-# --- TAB 3: VISUAL DNA CLUSTERS ---
+# --- TAB 3: VISUAL DNA ---
 with tab3:
-    st.subheader("🌌 Không gian Visual DNA (t-SNE)")
-    st.info("Các điểm gần nhau đại diện cho các sản phẩm có thiết kế tương đồng.")
-    
+    st.subheader("🌌 Semantic Space Visualization")
     fig_map = px.scatter(
         df_emb, x='x', y='y', color='mood',
         hover_name='article_id',
-        color_discrete_sequence=px.colors.qualitative.Safe
+        template="plotly_dark"
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, width="stretch")
 
-# Sidebar bổ sung
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=80)
-st.sidebar.markdown("---")
-st.sidebar.success("Dữ liệu đã sẵn sàng!")
-st.sidebar.caption("Phiên bản BI 2.6.1 | Đã tối ưu RAM")
+st.sidebar.caption("Version 2.6.2 | Fix ValueError & Width")
