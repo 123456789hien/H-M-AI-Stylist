@@ -519,6 +519,7 @@ elif page == "👥 Customer DNA":
     try:
         df_articles = data['article_master_web'].copy()
         df_customers = data.get('customer_dna_master')
+        df_transactions = data.get('customer_test_validation')
         
         if df_customers is None:
             st.warning("Customer data not available")
@@ -535,20 +536,39 @@ elif page == "👥 Customer DNA":
             with col2:
                 selected_segment = st.selectbox(
                     "Customer Segment",
-                    ["All"] + sorted(df_customers['segment'].unique().tolist()) if 'segment' in df_customers.columns else ["All"]
+                    ["All"] + sorted(df_customers['segment'].unique().tolist()) if 'segment' in df_customers.columns else ["All"],
+                    key="cust_segment"
                 )
+            
+            # Filter customers based on segment
+            filtered_customers = df_customers.copy()
+            if selected_segment != "All":
+                filtered_customers = filtered_customers[filtered_customers['segment'] == selected_segment]
+            
+            # Filter transactions by emotion if available
+            filtered_transactions = df_transactions.copy() if df_transactions is not None else None
+            if selected_emotion != "All" and filtered_transactions is not None:
+                emotion_articles = df_articles[df_articles['mood'] == selected_emotion]['article_id'].tolist()
+                filtered_transactions = filtered_transactions[filtered_transactions['article_id'].isin(emotion_articles)]
+                # Get customers who bought from this emotion
+                emotion_customers = filtered_transactions['customer_id'].unique()
+                filtered_customers = filtered_customers[filtered_customers['customer_id'].isin(emotion_customers)]
             
             st.divider()
             
+            # Dynamic KPIs based on filters
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("👥 Total Customers", f"{len(df_customers):,}")
+                st.metric("👥 Customers", f"{len(filtered_customers):,}")
             with col2:
-                st.metric("📅 Avg Age", f"{df_customers['age'].mean():.1f}" if 'age' in df_customers.columns else "N/A")
+                avg_age = filtered_customers['age'].mean() if 'age' in filtered_customers.columns and len(filtered_customers) > 0 else 0
+                st.metric("📅 Avg Age", f"{avg_age:.1f}")
             with col3:
-                st.metric("💰 Avg Spending", f"${df_customers['avg_spending'].mean():.2f}" if 'avg_spending' in df_customers.columns else "N/A")
+                avg_spending = filtered_customers['avg_spending'].mean() if 'avg_spending' in filtered_customers.columns and len(filtered_customers) > 0 else 0
+                st.metric("💰 Avg Spending", f"${avg_spending:.2f}")
             with col4:
-                st.metric("🛍️ Avg Purchases", f"{df_customers['purchase_count'].mean():.1f}" if 'purchase_count' in df_customers.columns else "N/A")
+                avg_purchases = filtered_customers['purchase_count'].mean() if 'purchase_count' in filtered_customers.columns and len(filtered_customers) > 0 else 0
+                st.metric("🛍️ Avg Purchases", f"{avg_purchases:.1f}")
             
             st.divider()
             
@@ -556,37 +576,56 @@ elif page == "👥 Customer DNA":
             
             with col1:
                 st.markdown("**Spending vs Age**")
-                fig_scatter = px.scatter(
-                    df_customers,
-                    x='age',
-                    y='avg_spending',
-                    color='segment' if 'segment' in df_customers.columns else None,
-                    hover_data=['purchase_count'],
-                    color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Bronze': '#CD7F32'}
-                )
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                if len(filtered_customers) > 0:
+                    fig_scatter = px.scatter(
+                        filtered_customers,
+                        x='age',
+                        y='avg_spending',
+                        color='segment' if 'segment' in filtered_customers.columns else None,
+                        hover_data=['purchase_count'],
+                        color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Bronze': '#CD7F32'}
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+                else:
+                    st.info("No data available for selected filters")
             
             with col2:
                 st.markdown("**Segment Distribution**")
-                if 'segment' in df_customers.columns:
-                    segment_counts = df_customers['segment'].value_counts()
+                if 'segment' in filtered_customers.columns and len(filtered_customers) > 0:
+                    segment_counts = filtered_customers['segment'].value_counts()
                     fig_segment = px.pie(
                         values=segment_counts.values,
                         names=segment_counts.index,
                         color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Bronze': '#CD7F32'}
                     )
                     st.plotly_chart(fig_segment, use_container_width=True)
+                else:
+                    st.info("No segment data available")
             
             st.divider()
             
             st.subheader("⭐ Top Loyalists")
             
-            top_customers = df_customers.nlargest(15, 'purchase_count')[[
-                'customer_id', 'age', 'segment', 'avg_spending', 'purchase_count'
-            ]].reset_index(drop=True)
-            
-            top_customers.index = top_customers.index + 1
-            st.dataframe(top_customers, use_container_width=True)
+            if len(filtered_customers) > 0:
+                top_customers = filtered_customers.nlargest(15, 'purchase_count')[[
+                    'customer_id', 'age', 'segment', 'avg_spending', 'purchase_count'
+                ]].reset_index(drop=True)
+                
+                # Add emotion column if transactions available
+                if filtered_transactions is not None and len(filtered_transactions) > 0:
+                    top_customers['emotion'] = top_customers['customer_id'].apply(
+                        lambda cid: df_articles[df_articles['article_id'].isin(
+                            filtered_transactions[filtered_transactions['customer_id'] == cid]['article_id']
+                        )]['mood'].mode()[0] if len(df_articles[df_articles['article_id'].isin(
+                            filtered_transactions[filtered_transactions['customer_id'] == cid]['article_id']
+                        )]) > 0 else 'N/A'
+                    )
+                    top_customers = top_customers[['customer_id', 'age', 'segment', 'emotion', 'avg_spending', 'purchase_count']]
+                
+                top_customers.index = top_customers.index + 1
+                st.dataframe(top_customers, use_container_width=True)
+            else:
+                st.info("No customers found for selected filters")
     
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
@@ -905,7 +944,7 @@ elif page == "📈 Performance & Financial":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien </strong></p>
+    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
     </div>
