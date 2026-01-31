@@ -214,36 +214,52 @@ def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
     return None
 
 def calculate_similarity(product1: pd.Series, product2: pd.Series, visual_data: Optional[pd.DataFrame] = None) -> float:
-    """Calculate similarity score between two products."""
+    """Calculate similarity score between two products (98-100% match)."""
     score = 0.0
     
-    # Same emotion (40% weight)
-    if product1['mood'] == product2['mood']:
-        score += 0.4
+    # STRICT: Same product group (MUST MATCH - 35% weight)
+    if product1['product_group_name'] == product2['product_group_name']:
+        score += 0.35
+    else:
+        # If product group doesn't match, return 0 (no recommendation)
+        return 0.0
     
-    # Similar price range (30% weight)
+    # STRICT: Same emotion (MUST MATCH - 35% weight)
+    if product1['mood'] == product2['mood']:
+        score += 0.35
+    else:
+        # Penalize heavily if emotion doesn't match
+        score += 0.0
+    
+    # Similar price range (15% weight)
     price_diff = abs(product1['price'] - product2['price'])
     max_price = max(product1['price'], product2['price'])
     if max_price > 0:
-        price_similarity = 1 - min(price_diff / max_price, 1)
-        score += price_similarity * 0.3
+        price_similarity = 1 - min(price_diff / (max_price * 0.5), 1)  # Stricter price tolerance
+        score += price_similarity * 0.15
     
-    # Similar hotness (20% weight)
+    # Similar hotness (15% weight)
     hotness_diff = abs(product1['hotness_score'] - product2['hotness_score'])
-    hotness_similarity = 1 - hotness_diff
-    score += hotness_similarity * 0.2
-    
-    # Same category (10% weight)
-    if product1['section_name'] == product2['section_name']:
-        score += 0.1
+    hotness_similarity = 1 - min(hotness_diff, 1)  # Stricter hotness tolerance
+    score += hotness_similarity * 0.15
     
     return min(score, 1.0)
 
 def get_recommendations(selected_product: pd.Series, df_articles: pd.DataFrame, 
                        visual_data: Optional[pd.DataFrame] = None, n_recommendations: int = 10) -> pd.DataFrame:
-    """Get top N similar products."""
-    # Filter out the selected product
-    candidates = df_articles[df_articles['article_id'] != selected_product['article_id']].copy()
+    """Get top N similar products with strict matching (98-100%)."""
+    # STRICT FILTER 1: Same product group
+    candidates = df_articles[
+        (df_articles['article_id'] != selected_product['article_id']) &
+        (df_articles['product_group_name'] == selected_product['product_group_name'])
+    ].copy()
+    
+    # STRICT FILTER 2: Same emotion
+    candidates = candidates[candidates['mood'] == selected_product['mood']]
+    
+    if len(candidates) == 0:
+        # If no exact matches, return empty
+        return pd.DataFrame()
     
     # Calculate similarity scores
     candidates['match_score'] = candidates.apply(
@@ -251,7 +267,10 @@ def get_recommendations(selected_product: pd.Series, df_articles: pd.DataFrame,
         axis=1
     )
     
-    # Sort by match score and return top N
+    # Filter only high similarity scores (>= 0.85 for 85%+ match)
+    candidates = candidates[candidates['match_score'] >= 0.85]
+    
+    # Sort by match score (descending) and return top N
     recommendations = candidates.nlargest(n_recommendations, 'match_score')
     
     return recommendations
