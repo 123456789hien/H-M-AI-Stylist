@@ -9,6 +9,7 @@ import zipfile
 from typing import Optional, Dict, Tuple, List
 import warnings
 import urllib.request
+import requests
 
 warnings.filterwarnings('ignore')
 
@@ -70,24 +71,21 @@ def ensure_data_dir():
     os.makedirs('data', exist_ok=True)
 
 def download_from_drive(file_id: str, file_path: str) -> bool:
-    """Download file from Google Drive with multiple fallback methods"""
+    """Download file from Google Drive with improved gdown handling"""
     try:
         if os.path.exists(file_path):
             return True
         
-        url = f"https://drive.google.com/uc?id={file_id}"
-        
+        # Use gdown directly with fuzzy logic for larger files
         try:
-            gdown.download(url, file_path, quiet=False)
-        except:
-            try:
-                urllib.request.urlretrieve(url, file_path)
-            except:
-                import requests
-                response = requests.get(url, timeout=30)
-                if response.status_code == 200:
-                    with open(file_path, 'wb') as f:
-                        f.write(response.content)
+            gdown.download(id=file_id, output=file_path, quiet=False, fuzzy=True)
+        except Exception as e:
+            # Fallback for small files or direct links
+            url = f"https://drive.google.com/uc?id={file_id}"
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
         
         return os.path.exists(file_path)
     except:
@@ -144,11 +142,18 @@ def load_data_from_drive() -> Dict:
                 st.info("📦 Extracting images...")
                 os.makedirs(images_dir, exist_ok=True)
                 with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
+                    # Fix: Handle potential subdirectories in zip
                     zip_ref.extractall(images_dir)
                 st.success("✅ Images extracted!")
             except Exception as e:
                 st.warning(f"⚠️ Image extraction issue: {str(e)}")
     
+    # Check if images are inside a subfolder (common in zip files)
+    if os.path.exists(images_dir):
+        contents = os.listdir(images_dir)
+        if len(contents) == 1 and os.path.isdir(os.path.join(images_dir, contents[0])):
+            images_dir = os.path.join(images_dir, contents[0])
+            
     data['images_dir'] = images_dir if os.path.exists(images_dir) else None
     st.success("✅ Data loaded successfully!")
     progress_bar.progress(1.0)
@@ -156,21 +161,23 @@ def load_data_from_drive() -> Dict:
     return data
 
 def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
-    """Get image path - images stored directly in folder as 10-digit ID + .jpg"""
+    """Get image path - search recursively if needed"""
     if images_dir is None:
         return None
     try:
         article_id_str = str(article_id).zfill(10)
-        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
         
+        # Method 1: Direct check
+        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
         if os.path.exists(image_path):
             return image_path
-        
-        # Fallback: try other extensions
-        for ext in ['.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
-            alt_path = os.path.join(images_dir, f"{article_id_str}{ext}")
-            if os.path.exists(alt_path):
-                return alt_path
+            
+        # Method 2: Recursive search (slow but reliable for first load)
+        for root, dirs, files in os.walk(images_dir):
+            for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+                filename = f"{article_id_str}{ext}"
+                if filename in files:
+                    return os.path.join(root, filename)
         
         return None
     except:
@@ -242,7 +249,7 @@ page = st.sidebar.radio(
 # ============================================================================
 if page == "📊 Executive Pulse":
     st.markdown('<div class="header-title">H & M Fashion BI</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Executive Pulse - Strategic Overview</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Executive Pulse Dashboard</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web'].copy()
@@ -667,9 +674,10 @@ elif page == "🤖 AI Recommendation":
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
+            # FIX: Added "All" option to Emotion filter as requested
             selected_emotion = st.selectbox(
                 "Emotion",
-                sorted(df_articles['mood'].unique().tolist()),
+                ["All"] + sorted(df_articles['mood'].unique().tolist()),
                 key="rec_emotion"
             )
         
@@ -697,7 +705,10 @@ elif page == "🤖 AI Recommendation":
             )
         
         # Filter products
-        filtered_products = df_articles[df_articles['mood'] == selected_emotion].copy()
+        filtered_products = df_articles.copy()
+        
+        if selected_emotion != "All":
+            filtered_products = filtered_products[filtered_products['mood'] == selected_emotion]
         
         if selected_category != "All":
             filtered_products = filtered_products[filtered_products['section_name'] == selected_category]
@@ -727,246 +738,133 @@ elif page == "🤖 AI Recommendation":
             st.metric("⭐ High Performers", high_perf)
         with col5:
             filtered_products['revenue'] = filtered_products['price'] * filtered_products['hotness_score']
-            total_revenue = filtered_products['revenue'].sum() if len(filtered_products) > 0 else 0
-            st.metric("💵 Revenue Potential", f"${total_revenue:,.0f}")
+            st.metric("💵 Revenue", f"${filtered_products['revenue'].sum():,.0f}")
         
         st.divider()
         
-        if len(filtered_products) == 0:
-            st.warning("No products found with selected filters")
-        else:
-            selected_product_name = st.selectbox(
-                "Choose Product",
-                filtered_products['prod_name'].tolist(),
-                key="product_select"
-            )
+        if len(filtered_products) > 0:
+            st.markdown("### 🎯 Discover Products")
             
-            selected_product = df_articles[df_articles['prod_name'] == selected_product_name].iloc[0]
+            # Show top 20 products from filtered list
+            display_products = filtered_products.sort_values('hotness_score', ascending=False).head(20)
             
-            st.divider()
-            
-            st.subheader("📦 Main Product Spotlight")
-            
-            col_img, col_info = st.columns([1.2, 2])
-            
-            with col_img:
-                image_path = get_image_path(selected_product['article_id'], images_dir)
-                if image_path:
-                    st.image(image_path, use_column_width=True)
-                else:
-                    st.info("📷 Image not available")
-            
-            with col_info:
-                st.markdown(f"""
-                ### {selected_product['prod_name']}
-                
-                **Category:** {selected_product['section_name']}  
-                **Group:** {selected_product['product_group_name']}  
-                **Emotion:** {selected_product['mood']}  
-                """)
-                
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    st.markdown(f"<div class='metric-badge'>💰 ${selected_product['price']:.2f}</div>", unsafe_allow_html=True)
-                with col_b:
-                    st.markdown(f"<div class='metric-badge'>🔥 {selected_product['hotness_score']:.2f}</div>", unsafe_allow_html=True)
-                with col_c:
-                    tier_name, _, _ = get_tier_info(selected_product['hotness_score'])
-                    st.markdown(f"<div class='metric-badge'>{tier_name}</div>", unsafe_allow_html=True)
-                
-                with st.expander("📝 Full Description"):
-                    st.write(selected_product.get('detail_desc', 'No description available'))
-            
-            st.divider()
-            
-            st.subheader("🎯 Smart Match Engine - Top 10 Similar Products")
-            
-            recommendations = get_smart_recommendations(selected_product, df_articles, n_recommendations=10)
-            
-            if len(recommendations) == 0:
-                st.warning("No similar products found")
-            else:
-                cols = st.columns(5)
-                
-                for idx, (_, product) in enumerate(recommendations.iterrows()):
-                    col_idx = idx % 5
-                    
-                    with cols[col_idx]:
-                        with st.container(border=True):
-                            image_path = get_image_path(product['article_id'], images_dir)
-                            if image_path:
-                                st.image(image_path, use_column_width=True)
-                            else:
-                                st.info("📷")
-                            
-                            st.markdown(f"**{product['prod_name'][:18]}...**")
-                            st.write(f"💰 ${product['price']:.2f}")
-                            st.write(f"🔥 {product['hotness_score']:.2f}")
-                            
-                            match_pct = product['match_score'] * 100
-                            st.markdown(
-                                f"<div style='background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 8px; border-radius: 10px; text-align: center; font-weight: bold; margin-top: 8px;'>✅ {match_pct:.0f}% Match</div>",
-                                unsafe_allow_html=True
-                            )
-                            
-                            if st.button("View", key=f"view_{product['article_id']}", use_container_width=True):
-                                st.session_state.show_detail_modal = True
-                                st.session_state.detail_product_id = product['article_id']
-                                st.rerun()
-            
-            # Detail Modal for Recommended Products
-            if st.session_state.show_detail_modal and st.session_state.detail_product_id:
-                detail_product = df_articles[df_articles['article_id'] == st.session_state.detail_product_id]
-                
-                if len(detail_product) > 0:
-                    detail_product = detail_product.iloc[0]
-                    
-                    st.divider()
-                    st.subheader(f"🔍 Detailed View - {detail_product['prod_name']}")
-                    
-                    col_img, col_info = st.columns([1, 2])
-                    
-                    with col_img:
-                        image_path = get_image_path(detail_product['article_id'], images_dir)
+            cols = st.columns(5)
+            for idx, (_, product) in enumerate(display_products.iterrows()):
+                col_idx = idx % 5
+                with cols[col_idx]:
+                    with st.container(border=True):
+                        image_path = get_image_path(product['article_id'], images_dir)
                         if image_path:
                             st.image(image_path, use_column_width=True)
                         else:
-                            st.info("📷 Image not available")
-                    
-                    with col_info:
-                        st.markdown(f"""
-                        ### {detail_product['prod_name']}
+                            st.info("📷 No image")
                         
-                        **Category:** {detail_product['section_name']}  
-                        **Group:** {detail_product['product_group_name']}  
-                        **Emotion:** {detail_product['mood']}  
-                        **Article ID:** {detail_product['article_id']}  
+                        st.markdown(f"**{product['prod_name'][:20]}...**")
+                        st.write(f"💰 ${product['price']:.2f} | 🔥 {product['hotness_score']:.2f}")
                         
-                        **Pricing & Performance:**
-                        - Price: ${detail_product['price']:.2f}
-                        - Hotness Score: {detail_product['hotness_score']:.2f}
-                        - Tier: {get_tier_info(detail_product['hotness_score'])[0]}
-                        """)
+                        if st.button("View Similar", key=f"sim_{product['article_id']}"):
+                            st.session_state.detail_product_id = product['article_id']
+                            st.session_state.show_detail_modal = True
+            
+            # Recommendation Modal (Simulated)
+            if st.session_state.show_detail_modal and st.session_state.detail_product_id:
+                st.divider()
+                selected_prod = df_articles[df_articles['article_id'] == st.session_state.detail_product_id].iloc[0]
+                
+                st.markdown(f"## 🤖 AI Recommendations for: {selected_prod['prod_name']}")
+                
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    img_path = get_image_path(selected_prod['article_id'], images_dir)
+                    if img_path:
+                        st.image(img_path, use_column_width=True)
+                    st.write(f"**Price:** ${selected_prod['price']}")
+                    st.write(f"**Emotion:** {selected_prod['mood']}")
+                
+                with col2:
+                    st.markdown("### Why you'll love these:")
+                    recs = get_smart_recommendations(selected_prod, df_articles)
                     
-                    st.markdown("**📝 Full Description:**")
-                    st.write(detail_product.get('detail_desc', 'No description available'))
-                    
-                    if st.button("Close Details", key="close_detail"):
-                        st.session_state.show_detail_modal = False
-                        st.session_state.detail_product_id = None
-                        st.rerun()
-    
+                    if len(recs) > 0:
+                        rec_cols = st.columns(3)
+                        for r_idx, (_, rec_prod) in enumerate(recs.head(6).iterrows()):
+                            r_col_idx = r_idx % 3
+                            with rec_cols[r_col_idx]:
+                                r_img = get_image_path(rec_prod['article_id'], images_dir)
+                                if r_img:
+                                    st.image(r_img, use_column_width=True)
+                                st.caption(f"{rec_prod['prod_name'][:15]}...")
+                                st.caption(f"Match: {rec_prod['match_score']:.1%}")
+                    else:
+                        st.write("No similar products found.")
+                
+                if st.button("Close Recommendations"):
+                    st.session_state.show_detail_modal = False
+                    st.rerun()
+        else:
+            st.warning("No products found matching your criteria.")
+            
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
-# PAGE 6: PERFORMANCE & FINANCIAL OUTLOOK
+# PAGE 6: PERFORMANCE & FINANCIAL
 # ============================================================================
 elif page == "📈 Performance & Financial":
     st.markdown('<div class="header-title">H & M Fashion BI</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Performance & Financial Outlook</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Performance & Financial Analytics</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web'].copy()
-        
-        selected_emotion = st.selectbox(
-            "Select Emotion",
-            ["All"] + sorted(df_articles['mood'].unique().tolist()),
-            key="perf_emotion"
-        )
-        
-        if selected_emotion == "All":
-            analysis_df = df_articles
-        else:
-            analysis_df = df_articles[df_articles['mood'] == selected_emotion]
-        
-        analysis_df['revenue_potential'] = analysis_df['price'] * analysis_df['hotness_score']
-        analysis_df['estimated_margin'] = analysis_df['price'] * 0.4
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("💰 Revenue Potential", f"${analysis_df['revenue_potential'].sum():,.0f}")
-        with col2:
-            st.metric("📊 Avg Margin", f"${analysis_df['estimated_margin'].mean():.2f}")
-        with col3:
-            high_performers = len(analysis_df[analysis_df['hotness_score'] > 0.7])
-            st.metric("⭐ High Performers", high_performers)
-        with col4:
-            low_performers = len(analysis_df[analysis_df['hotness_score'] < 0.3])
-            st.metric("📉 Low Performers", low_performers)
-        
-        st.divider()
+        df_articles['revenue_potential'] = df_articles['price'] * df_articles['hotness_score']
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Revenue by Category**")
-            revenue_by_cat = analysis_df.groupby('section_name')['revenue_potential'].sum().sort_values(ascending=False).head(15)
-            fig_revenue = px.bar(
-                x=revenue_by_cat.values,
-                y=revenue_by_cat.index,
+            st.markdown("### 💰 Revenue Potential by Category")
+            rev_cat = df_articles.groupby('section_name')['revenue_potential'].sum().sort_values(ascending=False).head(10)
+            fig_rev_cat = px.bar(
+                x=rev_cat.values,
+                y=rev_cat.index,
                 orientation='h',
-                color=revenue_by_cat.values,
-                color_continuous_scale='Reds'
+                color=rev_cat.values,
+                color_continuous_scale='Greens'
             )
-            st.plotly_chart(fig_revenue, use_container_width=True)
-        
+            st.plotly_chart(fig_rev_cat, use_container_width=True)
+            
         with col2:
-            st.markdown("**Hotness Performance**")
-            hotness_bins = pd.cut(analysis_df['hotness_score'],
-                                 bins=[0, 0.3, 0.5, 0.7, 1.0],
-                                 labels=['Low', 'Medium', 'High', 'Very High'])
-            hotness_dist = hotness_bins.value_counts()
-            fig_hotness = px.pie(
-                values=hotness_dist.values,
-                names=hotness_dist.index,
-                color_discrete_sequence=['#FF6B6B', '#FFA500', '#FFD700', '#E50019']
+            st.markdown("### 🔥 Hotness vs Price Correlation")
+            fig_corr = px.scatter(
+                df_articles,
+                x='price',
+                y='hotness_score',
+                color='mood',
+                hover_data=['prod_name'],
+                opacity=0.5
             )
-            st.plotly_chart(fig_hotness, use_container_width=True)
-        
+            st.plotly_chart(fig_corr, use_container_width=True)
+            
         st.divider()
         
-        st.subheader("📦 Inventory Health & Optimization")
-        
-        analysis_df['performance_tier'] = pd.cut(
-            analysis_df['hotness_score'],
-            bins=[0, 0.3, 0.5, 0.7, 1.0],
-            labels=['Low', 'Medium', 'High', 'Very High']
-        )
-        
-        inventory_rec = analysis_df.groupby('performance_tier').agg({
+        # Financial Summary Table
+        st.subheader("📊 Category Financial Summary")
+        cat_summary = df_articles.groupby('section_name').agg({
             'article_id': 'count',
             'price': 'mean',
             'hotness_score': 'mean',
             'revenue_potential': 'sum'
-        }).round(2)
+        }).rename(columns={
+            'article_id': 'SKU Count',
+            'price': 'Avg Price',
+            'hotness_score': 'Avg Hotness',
+            'revenue_potential': 'Total Revenue Potential'
+        }).sort_values('Total Revenue Potential', ascending=False)
         
-        inventory_rec.columns = ['Product Count', 'Avg Price', 'Avg Hotness', 'Total Revenue']
-        st.dataframe(inventory_rec, use_container_width=True)
+        st.dataframe(cat_summary.style.format({
+            'Avg Price': '${:.2f}',
+            'Avg Hotness': '{:.2f}',
+            'Total Revenue Potential': '${:,.0f}'
+        }), use_container_width=True)
         
-        st.markdown("""
-        <div class="insight-box">
-        <strong>📋 Inventory Recommendations:</strong>
-        <ul>
-        <li><strong>Very High:</strong> Increase stock 30-50%</li>
-        <li><strong>High:</strong> Maintain levels</li>
-        <li><strong>Medium:</strong> Reduce stock 20%</li>
-        <li><strong>Low:</strong> Discontinue or clearance</li>
-        </ul>
-        </div>
-        """, unsafe_allow_html=True)
-    
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-
-# ============================================================================
-# FOOTER
-# ============================================================================
-st.divider()
-st.markdown("""
-    <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard</strong></p>
-    <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
-    <p>Integrating Emotion Analytics And Recommendation System</p>
-    </div>
-""", unsafe_allow_html=True)
