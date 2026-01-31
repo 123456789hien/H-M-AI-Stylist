@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import gdown
 import os
 import zipfile
@@ -23,31 +22,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Professional CSS with 4-Tier color scheme
+# Professional CSS
 st.markdown("""
     <style>
     .main { padding-top: 1rem; }
     .header-title { font-size: 3.5rem; font-weight: 900; background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.3rem; letter-spacing: -1px; }
     .subtitle { font-size: 1.2rem; color: #666; margin-bottom: 2rem; font-weight: 500; }
     
-    .tier-premium { background: linear-gradient(135deg, #1e5631 0%, #40916c 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; }
+    .tier-premium { background: linear-gradient(135deg, #1e5631 0%, #40916c 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
     .tier-premium:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(30, 86, 49, 0.3); }
     
-    .tier-trend { background: linear-gradient(135deg, #52b788 0%, #74c69d 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; }
+    .tier-trend { background: linear-gradient(135deg, #52b788 0%, #74c69d 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
     .tier-trend:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(82, 183, 136, 0.3); }
     
-    .tier-stability { background: linear-gradient(135deg, #ffd60a 0%, #ffc300 100%); color: #333; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; }
+    .tier-stability { background: linear-gradient(135deg, #ffd60a 0%, #ffc300 100%); color: #333; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
     .tier-stability:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(255, 214, 10, 0.3); }
     
-    .tier-liquidation { background: linear-gradient(135deg, #ffb4a2 0%, #ff8b7b 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; }
+    .tier-liquidation { background: linear-gradient(135deg, #ffb4a2 0%, #ff8b7b 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
     .tier-liquidation:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(255, 139, 123, 0.3); }
     
-    .product-grid-item { border: 2px solid #e0e0e0; border-radius: 12px; padding: 12px; text-align: center; transition: all 0.3s ease; background: white; }
-    .product-grid-item:hover { border-color: #E50019; box-shadow: 0 8px 20px rgba(229, 0, 25, 0.2); transform: translateY(-4px); }
+    .product-card { border: 2px solid #e0e0e0; border-radius: 12px; padding: 12px; text-align: center; transition: all 0.3s ease; background: white; }
+    .product-card:hover { border-color: #E50019; box-shadow: 0 8px 20px rgba(229, 0, 25, 0.2); transform: translateY(-4px); }
     
-    .detail-panel { background: #f8f9fa; border-left: 4px solid #E50019; padding: 20px; border-radius: 8px; }
+    .detail-panel { background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-left: 4px solid #E50019; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     .insight-box { background: #f0f2f6; padding: 15px; border-left: 4px solid #E50019; border-radius: 5px; margin: 10px 0; }
-    .emotion-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; color: white; margin: 5px 5px 5px 0; font-size: 0.85rem; }
+    .metric-badge { background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; display: inline-block; margin: 5px 5px 5px 0; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -56,8 +55,10 @@ st.markdown("""
 # ============================================================================
 if 'selected_tier' not in st.session_state:
     st.session_state.selected_tier = None
-if 'selected_detail_product' not in st.session_state:
-    st.session_state.selected_detail_product = None
+if 'show_detail_modal' not in st.session_state:
+    st.session_state.show_detail_modal = False
+if 'detail_product_id' not in st.session_state:
+    st.session_state.detail_product_id = None
 
 # ============================================================================
 # DATA LOADING FUNCTIONS
@@ -80,7 +81,6 @@ def download_from_drive(file_id: str, file_path: str) -> bool:
             try:
                 urllib.request.urlretrieve(url, file_path)
             except:
-                # Try with requests library
                 import requests
                 response = requests.get(url, timeout=30)
                 if response.status_code == 200:
@@ -88,13 +88,13 @@ def download_from_drive(file_id: str, file_path: str) -> bool:
                         f.write(response.content)
         
         return os.path.exists(file_path)
-    except Exception as e:
+    except:
         return False
 
 def load_csv_safe(file_path: str) -> Optional[pd.DataFrame]:
     try:
         return pd.read_csv(file_path)
-    except Exception as e:
+    except:
         return None
 
 @st.cache_resource
@@ -102,7 +102,6 @@ def load_data_from_drive() -> Dict:
     data = {}
     ensure_data_dir()
     
-    # Correct Google Drive file IDs
     DRIVE_FILES = {
         'article_master_web': '1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK',
         'customer_dna_master': '182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH',
@@ -135,14 +134,18 @@ def load_data_from_drive() -> Dict:
     
     if not os.path.exists(images_dir):
         if not os.path.exists(images_zip_path):
+            st.info("📥 Downloading images (this may take a few minutes)...")
             download_from_drive(DRIVE_FILES['hm_web_images'], images_zip_path)
         
         if os.path.exists(images_zip_path):
             try:
+                st.info("📦 Extracting images...")
+                os.makedirs(images_dir, exist_ok=True)
                 with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(images_dir)
-            except:
-                pass
+                st.success("✅ Images extracted!")
+            except Exception as e:
+                st.warning(f"⚠️ Image extraction issue: {str(e)}")
     
     data['images_dir'] = images_dir if os.path.exists(images_dir) else None
     st.success("✅ Data loaded successfully!")
@@ -151,15 +154,22 @@ def load_data_from_drive() -> Dict:
     return data
 
 def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
-    """Get image path with multiple format support"""
+    """Get image path - images stored directly in folder as 10-digit ID + .jpg"""
     if images_dir is None:
         return None
     try:
-        article_id = str(article_id).zfill(10)
-        for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
-            image_path = os.path.join(images_dir, f"{article_id}{ext}")
-            if os.path.exists(image_path):
-                return image_path
+        article_id_str = str(article_id).zfill(10)
+        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
+        
+        if os.path.exists(image_path):
+            return image_path
+        
+        # Fallback: try other extensions
+        for ext in ['.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+            alt_path = os.path.join(images_dir, f"{article_id_str}{ext}")
+            if os.path.exists(alt_path):
+                return alt_path
+        
         return None
     except:
         return None
@@ -376,10 +386,10 @@ elif page == "🔍 Inventory & Pricing":
             
             with cols[idx]:
                 if st.button(f"""
-                {tier_label}
-                📦 {len(tier_products)} products
-                💰 ${avg_price:.2f} avg
-                🔥 {avg_hotness:.2f} hotness
+{tier_label}
+📦 {len(tier_products)} products
+💰 ${avg_price:.2f} avg
+🔥 {avg_hotness:.2f} hotness
                 """, key=f"tier_{tier_key}", use_container_width=True):
                     st.session_state.selected_tier = tier_key
         
@@ -415,9 +425,6 @@ elif page == "🔍 Inventory & Pricing":
                             st.write(f"💰 ${product['price']:.2f}")
                             st.write(f"🔥 {product['hotness_score']:.2f}")
                             st.write(f"😊 {product['mood']}")
-                            
-                            if st.button("View Details", key=f"detail_{product['article_id']}"):
-                                st.session_state.selected_detail_product = product['article_id']
             else:
                 st.warning("No products in this tier")
     
@@ -589,12 +596,13 @@ elif page == "👥 Customer DNA":
 # ============================================================================
 elif page == "🤖 AI Recommendation":
     st.markdown('<div class="header-title">H & M Fashion BI</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">AI Recommendation Engine</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">AI Recommendation Engine - Smart Discovery</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web'].copy()
         images_dir = data.get('images_dir')
         
+        # KPIs
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("🎯 Accuracy", "87.5%", "↑ 2.3%")
@@ -668,13 +676,13 @@ elif page == "🤖 AI Recommendation":
             
             st.divider()
             
-            # Main layout with sidebar
-            col_main, col_detail = st.columns([2, 1])
+            # Professional Two-Column Layout
+            col_main, col_detail = st.columns([2.5, 1.5])
             
             with col_main:
                 st.subheader("📦 Main Product Spotlight")
                 
-                col_img, col_info = st.columns([1, 1])
+                col_img, col_info = st.columns([1.2, 1])
                 
                 with col_img:
                     image_path = get_image_path(selected_product['article_id'], images_dir)
@@ -690,16 +698,20 @@ elif page == "🤖 AI Recommendation":
                     **Category:** {selected_product['section_name']}  
                     **Group:** {selected_product['product_group_name']}  
                     **Emotion:** {selected_product['mood']}  
-                    **Price:** ${selected_product['price']:.2f}  
-                    **Hotness:** {selected_product['hotness_score']:.2f}  
                     """)
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.markdown(f"<div class='metric-badge'>💰 ${selected_product['price']:.2f}</div>", unsafe_allow_html=True)
+                    with col_b:
+                        st.markdown(f"<div class='metric-badge'>🔥 {selected_product['hotness_score']:.2f}</div>", unsafe_allow_html=True)
                     
                     with st.expander("📝 Full Description"):
                         st.write(selected_product.get('detail_desc', 'No description available'))
                 
                 st.divider()
                 
-                st.subheader("🎯 Smart Match Engine")
+                st.subheader("🎯 Smart Match Engine - Top 10 Similar Products")
                 
                 recommendations = get_smart_recommendations(selected_product, df_articles, n_recommendations=10)
                 
@@ -718,38 +730,85 @@ elif page == "🤖 AI Recommendation":
                                     else:
                                         st.info("📷")
                                     
-                                    st.markdown(f"**{product['prod_name'][:20]}...**")
+                                    st.markdown(f"**{product['prod_name'][:18]}...**")
                                     st.write(f"💰 ${product['price']:.2f}")
                                     st.write(f"🔥 {product['hotness_score']:.2f}")
                                     
                                     match_pct = product['match_score'] * 100
                                     st.markdown(
-                                        f"<div style='background: #E50019; color: white; padding: 8px; border-radius: 10px; text-align: center; font-weight: bold;'>✅ {match_pct:.0f}% Match</div>",
+                                        f"<div style='background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 8px; border-radius: 10px; text-align: center; font-weight: bold; margin-top: 8px;'>✅ {match_pct:.0f}% Match</div>",
                                         unsafe_allow_html=True
                                     )
                                     
-                                    if st.button("View", key=f"detail_{product['article_id']}"):
-                                        st.session_state.selected_detail_product = product['article_id']
+                                    if st.button("View", key=f"view_{product['article_id']}", use_container_width=True):
+                                        st.session_state.show_detail_modal = True
+                                        st.session_state.detail_product_id = product['article_id']
                                         st.rerun()
             
             with col_detail:
                 st.markdown('<div class="detail-panel">', unsafe_allow_html=True)
+                
                 st.markdown("### 📋 Product Details")
                 
                 tier_name, tier_class, strategy = get_tier_info(selected_product['hotness_score'])
                 
                 st.markdown(f"""
                 **Tier:** {tier_name}  
-                **Strategy:** {strategy}  
+                **Strategy:** {strategy}
+                
+                ---
                 
                 **Price:** ${selected_product['price']:.2f}  
                 **Hotness:** {selected_product['hotness_score']:.2f}  
                 **Emotion:** {selected_product['mood']}  
                 **Category:** {selected_product['section_name']}  
                 **Group:** {selected_product['product_group_name']}  
+                **Article ID:** {selected_product['article_id']}  
                 """)
                 
                 st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Detail Modal for Recommended Products
+            if st.session_state.show_detail_modal and st.session_state.detail_product_id:
+                detail_product = df_articles[df_articles['article_id'] == st.session_state.detail_product_id]
+                
+                if len(detail_product) > 0:
+                    detail_product = detail_product.iloc[0]
+                    
+                    st.divider()
+                    st.subheader(f"🔍 Detailed View - {detail_product['prod_name']}")
+                    
+                    col_img, col_info = st.columns([1, 2])
+                    
+                    with col_img:
+                        image_path = get_image_path(detail_product['article_id'], images_dir)
+                        if image_path:
+                            st.image(image_path, use_column_width=True)
+                        else:
+                            st.info("📷 Image not available")
+                    
+                    with col_info:
+                        st.markdown(f"""
+                        ### {detail_product['prod_name']}
+                        
+                        **Category:** {detail_product['section_name']}  
+                        **Group:** {detail_product['product_group_name']}  
+                        **Emotion:** {detail_product['mood']}  
+                        **Article ID:** {detail_product['article_id']}  
+                        
+                        **Pricing & Performance:**
+                        - Price: ${detail_product['price']:.2f}
+                        - Hotness Score: {detail_product['hotness_score']:.2f}
+                        - Tier: {get_tier_info(detail_product['hotness_score'])[0]}
+                        """)
+                    
+                    st.markdown("**📝 Full Description:**")
+                    st.write(detail_product.get('detail_desc', 'No description available'))
+                    
+                    if st.button("Close Details", key="close_detail"):
+                        st.session_state.show_detail_modal = False
+                        st.session_state.detail_product_id = None
+                        st.rerun()
     
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
@@ -860,7 +919,7 @@ elif page == "📈 Performance & Financial":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien</strong></p>
+    <p><strong>H & M Fashion BI Dashboard</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
     </div>
