@@ -1,3 +1,231 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import gdown
+import os
+import zipfile
+from typing import Optional, Dict, Tuple, List
+import warnings
+import urllib.request
+
+warnings.filterwarnings('ignore')
+
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
+st.set_page_config(
+    page_title="H & M Fashion BI - Executive Dashboard",
+    page_icon="👗",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Professional CSS
+st.markdown("""
+    <style>
+    .main { padding-top: 1rem; }
+    .header-title { font-size: 3.5rem; font-weight: 900; background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.3rem; letter-spacing: -1px; }
+    .subtitle { font-size: 1.2rem; color: #666; margin-bottom: 2rem; font-weight: 500; }
+    
+    .tier-premium { background: linear-gradient(135deg, #1e5631 0%, #40916c 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
+    .tier-premium:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(30, 86, 49, 0.3); }
+    
+    .tier-trend { background: linear-gradient(135deg, #52b788 0%, #74c69d 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
+    .tier-trend:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(82, 183, 136, 0.3); }
+    
+    .tier-stability { background: linear-gradient(135deg, #ffd60a 0%, #ffc300 100%); color: #333; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
+    .tier-stability:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(255, 214, 10, 0.3); }
+    
+    .tier-liquidation { background: linear-gradient(135deg, #ffb4a2 0%, #ff8b7b 100%); color: white; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; }
+    .tier-liquidation:hover { transform: scale(1.05); box-shadow: 0 8px 16px rgba(255, 139, 123, 0.3); }
+    
+    .product-card { border: 2px solid #e0e0e0; border-radius: 12px; padding: 12px; text-align: center; transition: all 0.3s ease; background: white; }
+    .product-card:hover { border-color: #E50019; box-shadow: 0 8px 20px rgba(229, 0, 25, 0.2); transform: translateY(-4px); }
+    
+    .detail-panel { background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-left: 4px solid #E50019; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .insight-box { background: #f0f2f6; padding: 15px; border-left: 4px solid #E50019; border-radius: 5px; margin: 10px 0; }
+    .metric-badge { background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; display: inline-block; margin: 5px 5px 5px 0; }
+    </style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# SESSION STATE INITIALIZATION
+# ============================================================================
+if 'selected_tier' not in st.session_state:
+    st.session_state.selected_tier = None
+if 'show_detail_modal' not in st.session_state:
+    st.session_state.show_detail_modal = False
+if 'detail_product_id' not in st.session_state:
+    st.session_state.detail_product_id = None
+
+# ============================================================================
+# DATA LOADING FUNCTIONS
+# ============================================================================
+
+def ensure_data_dir():
+    os.makedirs('data', exist_ok=True)
+
+def download_from_drive(file_id: str, file_path: str) -> bool:
+    """Download file from Google Drive with multiple fallback methods"""
+    try:
+        if os.path.exists(file_path):
+            return True
+        
+        url = f"https://drive.google.com/uc?id={file_id}"
+        
+        try:
+            gdown.download(url, file_path, quiet=False)
+        except:
+            try:
+                urllib.request.urlretrieve(url, file_path)
+            except:
+                import requests
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
+        
+        return os.path.exists(file_path)
+    except:
+        return False
+
+def load_csv_safe(file_path: str) -> Optional[pd.DataFrame]:
+    try:
+        return pd.read_csv(file_path)
+    except:
+        return None
+
+@st.cache_resource
+def load_data_from_drive() -> Dict:
+    data = {}
+    ensure_data_dir()
+    
+    DRIVE_FILES = {
+        'article_master_web': '1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK',
+        'customer_dna_master': '182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH',
+        'customer_test_validation': '1mAufyQbOrpXdjkYXE4nhYyleGBoB6nXB',
+        'visual_dna_embeddings': '1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54',
+        'hm_web_images': '1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT'
+    }
+    
+    csv_files = {
+        'article_master_web': 'article_master_web.csv',
+        'customer_dna_master': 'customer_dna_master.csv',
+        'customer_test_validation': 'customer_test_validation.csv',
+        'visual_dna_embeddings': 'visual_dna_embeddings.csv'
+    }
+    
+    st.info("🔄 Loading data from Google Drive...")
+    progress_bar = st.progress(0)
+    
+    for idx, (key, filename) in enumerate(csv_files.items()):
+        file_path = f'data/{filename}'
+        if download_from_drive(DRIVE_FILES[key], file_path):
+            df = load_csv_safe(file_path)
+            if df is not None:
+                data[key] = df
+        progress_bar.progress((idx + 1) / (len(csv_files) + 1))
+    
+    # Load images
+    images_zip_path = 'data/hm_web_images.zip'
+    images_dir = 'data/hm_web_images'
+    
+    if not os.path.exists(images_dir):
+        if not os.path.exists(images_zip_path):
+            st.info("📥 Downloading images (this may take a few minutes)...")
+            download_from_drive(DRIVE_FILES['hm_web_images'], images_zip_path)
+        
+        if os.path.exists(images_zip_path):
+            try:
+                st.info("📦 Extracting images...")
+                os.makedirs(images_dir, exist_ok=True)
+                with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(images_dir)
+                st.success("✅ Images extracted!")
+            except Exception as e:
+                st.warning(f"⚠️ Image extraction issue: {str(e)}")
+    
+    data['images_dir'] = images_dir if os.path.exists(images_dir) else None
+    st.success("✅ Data loaded successfully!")
+    progress_bar.progress(1.0)
+    
+    return data
+
+def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
+    """Get image path - images stored directly in folder as 10-digit ID + .jpg"""
+    if images_dir is None:
+        return None
+    try:
+        article_id_str = str(article_id).zfill(10)
+        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
+        
+        if os.path.exists(image_path):
+            return image_path
+        
+        # Fallback: try other extensions
+        for ext in ['.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+            alt_path = os.path.join(images_dir, f"{article_id_str}{ext}")
+            if os.path.exists(alt_path):
+                return alt_path
+        
+        return None
+    except:
+        return None
+
+def get_tier_info(hotness: float) -> Tuple[str, str, str]:
+    """Return (tier_name, color_class, strategy)"""
+    if hotness > 0.8:
+        return ("💎 Premium Tier (>0.8)", "tier-premium", "Maximize Profit - Premium Branding")
+    elif hotness > 0.5:
+        return ("🔥 Trend Tier (0.5-0.8)", "tier-trend", "Push Marketing - Boost Visibility")
+    elif hotness > 0.3:
+        return ("⚖️ Stability Tier (0.3-0.5)", "tier-stability", "Gentle Discount 10-15%")
+    else:
+        return ("📉 Liquidation Tier (<0.3)", "tier-liquidation", "Clearance 20-30%")
+
+def get_smart_recommendations(selected_product: pd.Series, df_articles: pd.DataFrame, 
+                             n_recommendations: int = 10) -> pd.DataFrame:
+    """Hybrid recommendation engine"""
+    candidates = df_articles[
+        (df_articles['article_id'] != selected_product['article_id']) &
+        (df_articles['mood'] == selected_product['mood'])
+    ].copy()
+    
+    if len(candidates) == 0:
+        return pd.DataFrame()
+    
+    candidates['match_score'] = 0.0
+    candidates['match_score'] += 0.4
+    candidates['match_score'] += (candidates['section_name'] == selected_product['section_name']) * 0.2
+    
+    price_diff = abs(candidates['price'] - selected_product['price'])
+    max_price = max(candidates['price'].max(), selected_product['price'])
+    if max_price > 0:
+        price_sim = 1 - (price_diff / (max_price * 0.5)).clip(0, 1)
+        candidates['match_score'] += price_sim * 0.2
+    
+    hotness_diff = abs(candidates['hotness_score'] - selected_product['hotness_score'])
+    hotness_sim = 1 - hotness_diff.clip(0, 1)
+    candidates['match_score'] += hotness_sim * 0.2
+    
+    candidates = candidates[candidates['match_score'] >= 0.60]
+    return candidates.nlargest(n_recommendations, 'match_score')
+
+# ============================================================================
+# LOAD DATA
+# ============================================================================
+try:
+    data = load_data_from_drive()
+    if 'article_master_web' not in data or data['article_master_web'] is None:
+        st.error("❌ Could not load product data.")
+        st.stop()
+except Exception as e:
+    st.error(f"❌ Error: {str(e)}")
+    st.stop()
+
+# ============================================================================
 # SIDEBAR NAVIGATION
 # ============================================================================
 st.sidebar.markdown("## 🎯 H & M Navigation")
