@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -70,7 +70,6 @@ def ensure_data_dir():
     os.makedirs('data', exist_ok=True)
 
 def download_from_drive(file_id: str, file_path: str) -> bool:
-    """Download file from Google Drive with multiple fallback methods"""
     try:
         if os.path.exists(file_path):
             return True
@@ -140,38 +139,35 @@ def load_data_from_drive() -> Dict:
             download_from_drive(DRIVE_FILES['hm_web_images'], images_zip_path)
         
         if os.path.exists(images_zip_path):
-            try:
-                st.info("📦 Extracting images...")
-                os.makedirs(images_dir, exist_ok=True)
-                with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(images_dir)
-                st.success("✅ Images extracted!")
-            except Exception as e:
-                st.warning(f"⚠️ Image extraction issue: {str(e)}")
-    
-    data['images_dir'] = images_dir if os.path.exists(images_dir) else None
-    st.success("✅ Data loaded successfully!")
-    progress_bar.progress(1.0)
-    
-    return data
+            st.info("📦 Extracting images...")
+            os.makedirs(images_dir, exist_ok=True)
+            with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(images_dir)
+
+             for root, dirs, files in os.walk(images_dir):
+                for file in files:
+                    if file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        src = os.path.join(root, file)
+                        dst = os.path.join(images_dir, file)
+                        if src != dst:
+                            shutil.move(src, dst)
+
+            st.success("✅ Images ready!")
+
+        data['images_dir'] = images_dir if os.path.exists(images_dir) else None
+        st.success("✅ Data loaded successfully!")
+        progress_bar.progress(1.0)
+        return data
 
 def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
-    """Get image path - images stored directly in folder as 10-digit ID + .jpg"""
     if images_dir is None:
         return None
     try:
         article_id_str = str(article_id).zfill(10)
-        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
-        
-        if os.path.exists(image_path):
-            return image_path
-        
-        # Fallback: try other extensions
-        for ext in ['.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
-            alt_path = os.path.join(images_dir, f"{article_id_str}{ext}")
-            if os.path.exists(alt_path):
-                return alt_path
-        
+        for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+            path = os.path.join(images_dir, f"{article_id_str}{ext}")
+            if os.path.exists(path):
+                return path
         return None
     except:
         return None
