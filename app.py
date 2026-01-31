@@ -548,10 +548,10 @@ elif page == "👥 Customer DNA":
             # Filter transactions by emotion if available
             filtered_transactions = df_transactions.copy() if df_transactions is not None else None
             if selected_emotion != "All" and filtered_transactions is not None:
-                # Filter transactions by emotion (actual_purchased_mood)
-                filtered_transactions = filtered_transactions[filtered_transactions['actual_purchased_mood'].str.contains(selected_emotion, case=False, na=False)]
+                # Filter transactions by exact emotion match
+                filtered_trans_by_emotion = filtered_transactions[filtered_transactions['actual_purchased_mood'] == selected_emotion]
                 # Get customers who bought from this emotion
-                emotion_customers = filtered_transactions['customer_id'].unique()
+                emotion_customers = filtered_trans_by_emotion['customer_id'].unique()
                 filtered_customers = filtered_customers[filtered_customers['customer_id'].isin(emotion_customers)]
             
             st.divider()
@@ -940,7 +940,7 @@ elif page == "📈 Performance & Financial":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien</strong></p>
+    <p><strong>H & M Fashion BI Dashboard</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
     </div>
