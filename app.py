@@ -12,8 +12,6 @@ import urllib.request
 
 warnings.filterwarnings('ignore')
 
-IMAGE_FILE_ID = "1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA"
-
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
@@ -109,7 +107,7 @@ def load_data_from_drive() -> Dict:
         'customer_dna_master': '182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH',
         'customer_test_validation': '1mAufyQbOrpXdjkYXE4nhYyleGBoB6nXB',
         'visual_dna_embeddings': '1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54',
-        'hm_web_images': '1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA'
+        'hm_web_images': '1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT'
     }
     
     csv_files = {
@@ -608,22 +606,10 @@ elif page == "👥 Customer DNA":
             
             st.subheader("⭐ Top Loyalists")
             
-            # Build Top Loyalists based on BOTH emotion and segment filters
-            top_loyalists_data = df_customers.copy()
-            
-            # Apply segment filter
-            if selected_segment != "All":
-                top_loyalists_data = top_loyalists_data[top_loyalists_data['segment'] == selected_segment]
-            
-            # Apply emotion filter
-            if selected_emotion != "All" and df_transactions is not None:
-                emotion_customers = df_transactions[df_transactions['actual_purchased_mood'] == selected_emotion]['customer_id'].unique()
-                top_loyalists_data = top_loyalists_data[top_loyalists_data['customer_id'].isin(emotion_customers)]
-            
-            if len(top_loyalists_data) > 0:
-                top_customers = top_loyalists_data.nlargest(15, 'purchase_count').copy()
+            if len(filtered_customers) > 0:
+                top_customers = filtered_customers.nlargest(15, 'purchase_count').copy()
                 
-                # Select columns
+                # Select and rename columns
                 display_cols = ['customer_id', 'age', 'segment', 'avg_spending', 'purchase_count']
                 top_customers = top_customers[display_cols].reset_index(drop=True)
                 
