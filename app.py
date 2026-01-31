@@ -12,6 +12,8 @@ import urllib.request
 
 warnings.filterwarnings('ignore')
 
+IMAGE_FILE_ID = "1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA"
+
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
