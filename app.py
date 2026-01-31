@@ -12,6 +12,8 @@ import urllib.request
 
 warnings.filterwarnings('ignore')
 
+IMAGE_FILE_ID = "1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA"
+
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
@@ -107,7 +109,7 @@ def load_data_from_drive() -> Dict:
         'customer_dna_master': '182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH',
         'customer_test_validation': '1mAufyQbOrpXdjkYXE4nhYyleGBoB6nXB',
         'visual_dna_embeddings': '1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54',
-        'hm_web_images': '1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT'
+        'hm_web_images': '1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA'
     }
     
     csv_files = {
@@ -548,10 +550,10 @@ elif page == "👥 Customer DNA":
             # Filter transactions by emotion if available
             filtered_transactions = df_transactions.copy() if df_transactions is not None else None
             if selected_emotion != "All" and filtered_transactions is not None:
-                # Filter transactions by emotion (actual_purchased_mood)
-                filtered_transactions = filtered_transactions[filtered_transactions['actual_purchased_mood'].str.contains(selected_emotion, case=False, na=False)]
+                # Filter transactions by exact emotion match
+                filtered_trans_by_emotion = filtered_transactions[filtered_transactions['actual_purchased_mood'] == selected_emotion]
                 # Get customers who bought from this emotion
-                emotion_customers = filtered_transactions['customer_id'].unique()
+                emotion_customers = filtered_trans_by_emotion['customer_id'].unique()
                 filtered_customers = filtered_customers[filtered_customers['customer_id'].isin(emotion_customers)]
             
             st.divider()
@@ -606,19 +608,42 @@ elif page == "👥 Customer DNA":
             
             st.subheader("⭐ Top Loyalists")
             
-            if len(filtered_customers) > 0:
-                top_customers = filtered_customers.nlargest(15, 'purchase_count')[[
-                    'customer_id', 'age', 'segment', 'avg_spending', 'purchase_count'
-                ]].reset_index(drop=True)
+            # Build Top Loyalists based on BOTH emotion and segment filters
+            top_loyalists_data = df_customers.copy()
+            
+            # Apply segment filter
+            if selected_segment != "All":
+                top_loyalists_data = top_loyalists_data[top_loyalists_data['segment'] == selected_segment]
+            
+            # Apply emotion filter
+            if selected_emotion != "All" and df_transactions is not None:
+                emotion_customers = df_transactions[df_transactions['actual_purchased_mood'] == selected_emotion]['customer_id'].unique()
+                top_loyalists_data = top_loyalists_data[top_loyalists_data['customer_id'].isin(emotion_customers)]
+            
+            if len(top_loyalists_data) > 0:
+                top_customers = top_loyalists_data.nlargest(15, 'purchase_count').copy()
+                
+                # Select columns
+                display_cols = ['customer_id', 'age', 'segment', 'avg_spending', 'purchase_count']
+                top_customers = top_customers[display_cols].reset_index(drop=True)
                 
                 # Add emotion column if transactions available
                 if df_transactions is not None and len(df_transactions) > 0:
-                    top_customers['emotion'] = top_customers['customer_id'].apply(
-                        lambda cid: df_transactions[df_transactions['customer_id'] == cid]['actual_purchased_mood'].mode()[0] if len(df_transactions[df_transactions['customer_id'] == cid]) > 0 else 'N/A'
-                    )
+                    emotions = []
+                    for cid in top_customers['customer_id']:
+                        cust_trans = df_transactions[df_transactions['customer_id'] == cid]
+                        if len(cust_trans) > 0:
+                            mode_emotion = cust_trans['actual_purchased_mood'].mode()
+                            emotion = mode_emotion[0] if len(mode_emotion) > 0 else 'N/A'
+                        else:
+                            emotion = 'N/A'
+                        emotions.append(emotion)
+                    top_customers['emotion'] = emotions
                     top_customers = top_customers[['customer_id', 'age', 'segment', 'emotion', 'avg_spending', 'purchase_count']]
                 
+                # Format display
                 top_customers.index = top_customers.index + 1
+                top_customers.columns = ['Customer ID', 'Age', 'Segment', 'Emotion', 'Avg Spending', 'Purchases']
                 st.dataframe(top_customers, use_container_width=True)
             else:
                 st.info("No customers found for selected filters")
