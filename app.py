@@ -243,9 +243,10 @@ if page == "📊 Dashboard Tổng Quan":
             st.subheader("📈 Phân Bố Giá Theo Danh Mục")
             try:
                 category_price = df_articles.groupby('section_name')['price'].mean().sort_values(ascending=False).head(10)
-                fig_cat_price = px.barh(
+                fig_cat_price = px.bar(
                     x=category_price.values,
                     y=category_price.index,
+                    orientation='h',
                     title="Top 10 Danh Mục Theo Giá TB",
                     labels={'x': 'Giá TB ($)', 'y': 'Danh Mục'},
                     color_discrete_sequence=['#E50019']
@@ -318,7 +319,7 @@ elif page == "🔍 Phân Tích Sản Phẩm":
         df_articles = data['article_master_web']
         
         # Filters
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             selected_section = st.selectbox(
@@ -333,10 +334,30 @@ elif page == "🔍 Phân Tích Sản Phẩm":
             )
         
         with col3:
-            selected_color = st.selectbox(
-                "Chọn Màu Sắc",
-                ["Tất Cả"] + sorted([c for c in df_articles['perceived_colour_master_name'].unique() if pd.notna(c)])
-            )
+            # FIX: Handle missing color column safely
+            color_cols = [col for col in df_articles.columns if 'colour' in col.lower() or 'color' in col.lower()]
+            if color_cols:
+                color_col = color_cols[0]
+                colors = df_articles[color_col].unique()
+                selected_color = st.selectbox(
+                    "Chọn Màu Sắc",
+                    ["Tất Cả"] + sorted([c for c in colors if pd.notna(c)])
+                )
+            else:
+                selected_color = "Tất Cả"
+        
+        with col4:
+            # FIX: Add gender filter
+            gender_cols = [col for col in df_articles.columns if 'gender' in col.lower() or 'sex' in col.lower()]
+            if gender_cols:
+                gender_col = gender_cols[0]
+                genders = df_articles[gender_col].unique()
+                selected_gender = st.selectbox(
+                    "Chọn Giới Tính",
+                    ["Tất Cả"] + sorted([g for g in genders if pd.notna(g)])
+                )
+            else:
+                selected_gender = "Tất Cả"
         
         # Apply filters
         filtered_df = df_articles.copy()
@@ -347,8 +368,11 @@ elif page == "🔍 Phân Tích Sản Phẩm":
         if selected_product_group != "Tất Cả":
             filtered_df = filtered_df[filtered_df['product_group_name'] == selected_product_group]
         
-        if selected_color != "Tất Cả":
-            filtered_df = filtered_df[filtered_df['perceived_colour_master_name'] == selected_color]
+        if selected_color != "Tất Cả" and color_cols:
+            filtered_df = filtered_df[filtered_df[color_cols[0]] == selected_color]
+        
+        if selected_gender != "Tất Cả" and gender_cols:
+            filtered_df = filtered_df[filtered_df[gender_cols[0]] == selected_gender]
         
         st.info(f"📊 Phân tích {len(filtered_df)} sản phẩm từ {len(df_articles)} tổng cộng")
         
@@ -360,44 +384,51 @@ elif page == "🔍 Phân Tích Sản Phẩm":
         with col1:
             st.subheader("😊 Emotion Distribution (Danh Mục Được Chọn)")
             try:
-                emotion_dist = filtered_df['mood'].value_counts()
-                fig_emotion = px.pie(
-                    values=emotion_dist.values,
-                    names=emotion_dist.index,
-                    title=f"Emotion Distribution ({len(filtered_df)} sản phẩm)",
-                    color_discrete_sequence=px.colors.qualitative.Set2
-                )
-                st.plotly_chart(fig_emotion, use_container_width=True)
-                
-                # Show insights
-                top_emotion = emotion_dist.index[0]
-                top_pct = (emotion_dist.values[0] / emotion_dist.sum()) * 100
-                st.markdown(f"""
-                <div class="insight-box">
-                <strong>💡 Insight:</strong> Emotion <strong>{top_emotion}</strong> chiếm <strong>{top_pct:.1f}%</strong> 
-                sản phẩm trong danh mục này. Đây là cảm xúc chủ đạo.
-                </div>
-                """, unsafe_allow_html=True)
+                if len(filtered_df) > 0:
+                    emotion_dist = filtered_df['mood'].value_counts()
+                    fig_emotion = px.pie(
+                        values=emotion_dist.values,
+                        names=emotion_dist.index,
+                        title=f"Emotion Distribution ({len(filtered_df)} sản phẩm)",
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    st.plotly_chart(fig_emotion, use_container_width=True)
+                    
+                    # Show insights
+                    if len(emotion_dist) > 0:
+                        top_emotion = emotion_dist.index[0]
+                        top_pct = (emotion_dist.values[0] / emotion_dist.sum()) * 100
+                        st.markdown(f"""
+                        <div class="insight-box">
+                        <strong>💡 Insight:</strong> Emotion <strong>{top_emotion}</strong> chiếm <strong>{top_pct:.1f}%</strong> 
+                        sản phẩm trong danh mục này. Đây là cảm xúc chủ đạo.
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.warning("Không có dữ liệu để hiển thị")
             except Exception as e:
                 st.error(f"Lỗi: {str(e)}")
         
         with col2:
             st.subheader("💰 Phân Tích Giá Theo Emotion")
             try:
-                price_by_emotion = filtered_df.groupby('mood')['price'].agg(['mean', 'min', 'max', 'count']).round(2)
-                price_by_emotion = price_by_emotion.sort_values('mean', ascending=False)
-                
-                fig_price = px.bar(
-                    x=price_by_emotion.index,
-                    y=price_by_emotion['mean'],
-                    title="Giá TB Theo Emotion",
-                    labels={'x': 'Emotion', 'y': 'Giá TB ($)'},
-                    color=price_by_emotion['mean'],
-                    color_continuous_scale='RdYlGn_r'
-                )
-                st.plotly_chart(fig_price, use_container_width=True)
-                
-                st.dataframe(price_by_emotion, use_container_width=True)
+                if len(filtered_df) > 0:
+                    price_by_emotion = filtered_df.groupby('mood')['price'].agg(['mean', 'min', 'max', 'count']).round(2)
+                    price_by_emotion = price_by_emotion.sort_values('mean', ascending=False)
+                    
+                    fig_price = px.bar(
+                        x=price_by_emotion.index,
+                        y=price_by_emotion['mean'],
+                        title="Giá TB Theo Emotion",
+                        labels={'x': 'Emotion', 'y': 'Giá TB ($)'},
+                        color=price_by_emotion['mean'],
+                        color_continuous_scale='RdYlGn_r'
+                    )
+                    st.plotly_chart(fig_price, use_container_width=True)
+                    
+                    st.dataframe(price_by_emotion, use_container_width=True)
+                else:
+                    st.warning("Không có dữ liệu để hiển thị")
             except Exception as e:
                 st.error(f"Lỗi: {str(e)}")
         
@@ -409,34 +440,39 @@ elif page == "🔍 Phân Tích Sản Phẩm":
         with col1:
             st.subheader("🔥 Hotness Score Theo Emotion")
             try:
-                hotness_by_emotion = filtered_df.groupby('mood')['hotness_score'].mean().sort_values(ascending=False)
-                fig_hotness = px.bar(
-                    x=hotness_by_emotion.index,
-                    y=hotness_by_emotion.values,
-                    title="Hotness Score TB",
-                    labels={'x': 'Emotion', 'y': 'Hotness Score'},
-                    color=hotness_by_emotion.values,
-                    color_continuous_scale='Reds'
-                )
-                st.plotly_chart(fig_hotness, use_container_width=True)
+                if len(filtered_df) > 0:
+                    hotness_by_emotion = filtered_df.groupby('mood')['hotness_score'].mean().sort_values(ascending=False)
+                    fig_hotness = px.bar(
+                        x=hotness_by_emotion.index,
+                        y=hotness_by_emotion.values,
+                        title="Hotness Score TB",
+                        labels={'x': 'Emotion', 'y': 'Hotness Score'},
+                        color=hotness_by_emotion.values,
+                        color_continuous_scale='Reds'
+                    )
+                    st.plotly_chart(fig_hotness, use_container_width=True)
+                else:
+                    st.warning("Không có dữ liệu để hiển thị")
             except Exception as e:
                 st.error(f"Lỗi: {str(e)}")
         
         with col2:
             st.subheader("📈 Scatter: Giá vs Hotness")
             try:
-                fig_scatter = px.scatter(
-                    filtered_df,
-                    x='price',
-                    y='hotness_score',
-                    color='mood',
-                    size='article_id',
-                    hover_data=['prod_name'],
-                    title="Mối Quan Hệ Giá - Hotness",
-                    labels={'price': 'Giá ($)', 'hotness_score': 'Hotness Score'},
-                    color_discrete_sequence=px.colors.qualitative.Set2
-                )
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                if len(filtered_df) > 0:
+                    fig_scatter = px.scatter(
+                        filtered_df,
+                        x='price',
+                        y='hotness_score',
+                        color='mood',
+                        hover_data=['prod_name'],
+                        title="Mối Quan Hệ Giá - Hotness",
+                        labels={'price': 'Giá ($)', 'hotness_score': 'Hotness Score'},
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+                else:
+                    st.warning("Không có dữ liệu để hiển thị")
             except Exception as e:
                 st.error(f"Lỗi: {str(e)}")
         
@@ -445,8 +481,11 @@ elif page == "🔍 Phân Tích Sản Phẩm":
         # Top Products by Hotness
         st.subheader("⭐ Top 10 Sản Phẩm Theo Hotness Score")
         try:
-            top_products = filtered_df.nlargest(10, 'hotness_score')[['prod_name', 'section_name', 'mood', 'price', 'hotness_score']]
-            st.dataframe(top_products, use_container_width=True)
+            if len(filtered_df) > 0:
+                top_products = filtered_df.nlargest(10, 'hotness_score')[['prod_name', 'section_name', 'mood', 'price', 'hotness_score']]
+                st.dataframe(top_products, use_container_width=True)
+            else:
+                st.warning("Không có dữ liệu để hiển thị")
         except Exception as e:
             st.error(f"Lỗi: {str(e)}")
     
@@ -499,9 +538,10 @@ elif page == "😊 Emotion Analytics":
             st.subheader("🏷️ Danh Mục Chính")
             try:
                 category_dist = emotion_df['section_name'].value_counts().head(10)
-                fig_cat = px.barh(
+                fig_cat = px.bar(
                     x=category_dist.values,
                     y=category_dist.index,
+                    orientation='h',
                     title=f"Top 10 Danh Mục - {selected_emotion}",
                     color_discrete_sequence=['#E50019']
                 )
@@ -582,10 +622,14 @@ elif page == "👥 Customer Intelligence":
             with col2:
                 if 'age' in df_customers.columns:
                     st.metric("📅 Tuổi TB", f"{df_customers['age'].mean():.1f}")
+                else:
+                    st.metric("📅 Tuổi TB", "N/A")
             
             with col3:
                 if 'customer_segment' in df_customers.columns:
                     st.metric("🏆 Phân Khúc", df_customers['customer_segment'].nunique())
+                else:
+                    st.metric("🏆 Phân Khúc", "N/A")
             
             with col4:
                 st.metric("📊 Dữ Liệu", f"{len(df_customers):,} records")
@@ -600,19 +644,26 @@ elif page == "👥 Customer Intelligence":
                 try:
                     if 'customer_segment' in df_customers.columns:
                         segment_counts = df_customers['customer_segment'].value_counts()
-                        fig_segment = px.pie(
-                            values=segment_counts.values,
-                            names=segment_counts.index,
-                            title="Phân Bố Khách Hàng Theo Phân Khúc",
-                            color_discrete_map={
-                                'Gold': '#FFD700',
-                                'Silver': '#C0C0C0',
-                                'Bronze': '#CD7F32'
-                            }
-                        )
-                        st.plotly_chart(fig_segment, use_container_width=True)
-                        
-                        st.dataframe(segment_counts, use_container_width=True)
+                        if len(segment_counts) > 0:
+                            fig_segment = px.pie(
+                                values=segment_counts.values,
+                                names=segment_counts.index,
+                                title="Phân Bố Khách Hàng Theo Phân Khúc",
+                                color_discrete_map={
+                                    'Gold': '#FFD700',
+                                    'Silver': '#C0C0C0',
+                                    'Bronze': '#CD7F32'
+                                }
+                            )
+                            st.plotly_chart(fig_segment, use_container_width=True)
+                            
+                            # FIX: Display as dataframe properly
+                            segment_df = pd.DataFrame({'Phân Khúc': segment_counts.index, 'Số Lượng': segment_counts.values})
+                            st.dataframe(segment_df, use_container_width=True)
+                        else:
+                            st.warning("Không có dữ liệu phân khúc")
+                    else:
+                        st.warning("Cột 'customer_segment' không có trong dữ liệu")
                 except Exception as e:
                     st.error(f"Lỗi: {str(e)}")
             
@@ -628,6 +679,8 @@ elif page == "👥 Customer Intelligence":
                             color_discrete_sequence=['#E50019']
                         )
                         st.plotly_chart(fig_age, use_container_width=True)
+                    else:
+                        st.warning("Cột 'age' không có trong dữ liệu")
                 except Exception as e:
                     st.error(f"Lỗi: {str(e)}")
             
@@ -637,11 +690,12 @@ elif page == "👥 Customer Intelligence":
             st.subheader("📊 Phân Tích Theo Nhóm Tuổi")
             try:
                 if 'age' in df_customers.columns:
-                    df_customers['age_group'] = pd.cut(df_customers['age'], 
-                                                       bins=[0, 20, 30, 40, 50, 60, 100],
-                                                       labels=['<20', '20-30', '30-40', '40-50', '50-60', '60+'])
+                    df_customers_copy = df_customers.copy()
+                    df_customers_copy['age_group'] = pd.cut(df_customers_copy['age'], 
+                                                           bins=[0, 20, 30, 40, 50, 60, 100],
+                                                           labels=['<20', '20-30', '30-40', '40-50', '50-60', '60+'])
                     
-                    age_group_stats = df_customers.groupby('age_group').size()
+                    age_group_stats = df_customers_copy.groupby('age_group').size()
                     
                     fig_age_group = px.bar(
                         x=age_group_stats.index,
@@ -651,6 +705,8 @@ elif page == "👥 Customer Intelligence":
                         color_discrete_sequence=['#E50019']
                     )
                     st.plotly_chart(fig_age_group, use_container_width=True)
+                else:
+                    st.warning("Cột 'age' không có trong dữ liệu")
             except Exception as e:
                 st.error(f"Lỗi: {str(e)}")
         else:
@@ -689,13 +745,14 @@ elif page == "🤖 Recommendation Engine":
         # Product Selection for Recommendations
         st.subheader("🔍 Chọn Sản Phẩm Để Xem Gợi Ý")
         
-        selected_product_idx = st.selectbox(
+        product_names = df_articles['prod_name'].head(100).tolist()
+        selected_product_name = st.selectbox(
             "Chọn sản phẩm",
-            range(min(100, len(df_articles))),
-            format_func=lambda x: df_articles.iloc[x]['prod_name'][:50]
+            product_names
         )
         
-        selected_product = df_articles.iloc[selected_product_idx]
+        # FIX: Get the actual product by name
+        selected_product = df_articles[df_articles['prod_name'] == selected_product_name].iloc[0]
         
         col1, col2 = st.columns(2)
         
@@ -723,22 +780,26 @@ elif page == "🤖 Recommendation Engine":
         # Recommendations
         st.subheader("🎯 Sản Phẩm Được Gợi Ý")
         
-        # Same emotion recommendations
+        # FIX: Same emotion recommendations - filter properly
         same_emotion = df_articles[
             (df_articles['mood'] == selected_product['mood']) & 
             (df_articles['article_id'] != selected_product['article_id'])
         ].nlargest(5, 'hotness_score')
         
-        col1, col2, col3, col4, col5 = st.columns(5)
-        cols = [col1, col2, col3, col4, col5]
-        
-        for idx, (_, product) in enumerate(same_emotion.iterrows()):
-            with cols[idx]:
-                st.markdown(f"**{product['prod_name'][:25]}...**")
-                st.write(f"Emotion: {product['mood']}")
-                st.write(f"Giá: ${product['price']:.2f}")
-                st.write(f"Hotness: {product['hotness_score']:.2f}")
-                st.write(f"Khớp: {np.random.uniform(0.75, 0.99):.2%}")
+        if len(same_emotion) > 0:
+            col1, col2, col3, col4, col5 = st.columns(5)
+            cols = [col1, col2, col3, col4, col5]
+            
+            for idx, (_, product) in enumerate(same_emotion.iterrows()):
+                if idx < len(cols):
+                    with cols[idx]:
+                        st.markdown(f"**{product['prod_name'][:25]}...**")
+                        st.write(f"Emotion: {product['mood']}")
+                        st.write(f"Giá: ${product['price']:.2f}")
+                        st.write(f"Hotness: {product['hotness_score']:.2f}")
+                        st.write(f"Khớp: {np.random.uniform(0.75, 0.99):.2%}")
+        else:
+            st.info("Không tìm thấy sản phẩm gợi ý cùng emotion")
         
         st.divider()
         
@@ -764,7 +825,7 @@ elif page == "📈 Business Performance":
     st.markdown('<div class="subtitle">Phân tích doanh thu, tối ưu hóa kho hàng và dự báo</div>', unsafe_allow_html=True)
     
     try:
-        df_articles = data['article_master_web']
+        df_articles = data['article_master_web'].copy()
         
         # Business KPIs
         col1, col2, col3, col4 = st.columns(4)
@@ -796,9 +857,10 @@ elif page == "📈 Business Performance":
                 df_articles['revenue_potential'] = df_articles['price'] * df_articles['hotness_score']
                 revenue_by_category = df_articles.groupby('section_name')['revenue_potential'].sum().sort_values(ascending=False).head(15)
                 
-                fig_revenue = px.barh(
+                fig_revenue = px.bar(
                     x=revenue_by_category.values,
                     y=revenue_by_category.index,
+                    orientation='h',
                     title="Top 15 Danh Mục Theo Revenue Potential",
                     labels={'x': 'Revenue Potential ($)', 'y': 'Danh Mục'},
                     color=revenue_by_category.values,
