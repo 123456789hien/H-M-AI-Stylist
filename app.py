@@ -13,8 +13,6 @@ import requests
 
 warnings.filterwarnings('ignore')
 
-IMAGE_FILE_ID = "1z27fEDUpgXfiFzb1eUv5i5pbIA_cI7UA"
-
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
@@ -71,16 +69,16 @@ def ensure_data_dir():
     os.makedirs('data', exist_ok=True)
 
 def download_from_drive(file_id: str, file_path: str) -> bool:
-    """Download file from Google Drive with improved gdown handling"""
+    """Download file from Google Drive with improved gdown handling for large files"""
     try:
         if os.path.exists(file_path):
             return True
         
-        # Use gdown directly with fuzzy logic for larger files
+        # Use gdown with fuzzy=True to handle Google's virus scan warning for large files
         try:
             gdown.download(id=file_id, output=file_path, quiet=False, fuzzy=True)
         except Exception as e:
-            # Fallback for small files or direct links
+            # Fallback for direct download if gdown fails
             url = f"https://drive.google.com/uc?id={file_id}"
             response = requests.get(url, timeout=30)
             if response.status_code == 200:
@@ -139,21 +137,30 @@ def load_data_from_drive() -> Dict:
         
         if os.path.exists(images_zip_path):
             try:
-                st.info("📦 Extracting images...")
-                os.makedirs(images_dir, exist_ok=True)
-                with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
-                    # Fix: Handle potential subdirectories in zip
-                    zip_ref.extractall(images_dir)
-                st.success("✅ Images extracted!")
+                # Check if it's actually a zip file before trying to extract
+                if not zipfile.is_zipfile(images_zip_path):
+                    st.error("❌ Downloaded file is not a valid zip file. Please check if the Google Drive link is public.")
+                    # Try to see content of the file if it's small (might be an HTML error page)
+                    if os.path.getsize(images_zip_path) < 10000:
+                        with open(images_zip_path, 'r', errors='ignore') as f:
+                            st.code(f.read()[:500])
+                else:
+                    st.info("📦 Extracting images...")
+                    os.makedirs(images_dir, exist_ok=True)
+                    with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
+                        zip_ref.extractall(images_dir)
+                    st.success("✅ Images extracted!")
             except Exception as e:
                 st.warning(f"⚠️ Image extraction issue: {str(e)}")
     
-    # Check if images are inside a subfolder (common in zip files)
+    # Auto-detect if images are in a subfolder
     if os.path.exists(images_dir):
-        contents = os.listdir(images_dir)
-        if len(contents) == 1 and os.path.isdir(os.path.join(images_dir, contents[0])):
-            images_dir = os.path.join(images_dir, contents[0])
-            
+        # Look for a directory that might contain the images
+        for root, dirs, files in os.walk(images_dir):
+            if any(f.lower().endswith(('.jpg', '.jpeg', '.png')) for f in files):
+                images_dir = root
+                break
+                
     data['images_dir'] = images_dir if os.path.exists(images_dir) else None
     st.success("✅ Data loaded successfully!")
     progress_bar.progress(1.0)
@@ -161,23 +168,23 @@ def load_data_from_drive() -> Dict:
     return data
 
 def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
-    """Get image path - search recursively if needed"""
+    """Get image path - search recursively for 10-digit ID + extension"""
     if images_dir is None:
         return None
     try:
         article_id_str = str(article_id).zfill(10)
         
-        # Method 1: Direct check
-        image_path = os.path.join(images_dir, f"{article_id_str}.jpg")
-        if os.path.exists(image_path):
-            return image_path
-            
-        # Method 2: Recursive search (slow but reliable for first load)
+        # Method 1: Check common extensions in current dir
+        for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+            path = os.path.join(images_dir, f"{article_id_str}{ext}")
+            if os.path.exists(path):
+                return path
+        
+        # Method 2: Recursive search (fallback)
         for root, dirs, files in os.walk(images_dir):
-            for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
-                filename = f"{article_id_str}{ext}"
-                if filename in files:
-                    return os.path.join(root, filename)
+            for f in files:
+                if f.startswith(article_id_str) and f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    return os.path.join(root, f)
         
         return None
     except:
@@ -674,7 +681,7 @@ elif page == "🤖 AI Recommendation":
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # FIX: Added "All" option to Emotion filter as requested
+            # FIX: Added "All" and "Specific" (default sorted) options as requested
             selected_emotion = st.selectbox(
                 "Emotion",
                 ["All"] + sorted(df_articles['mood'].unique().tolist()),
@@ -738,71 +745,81 @@ elif page == "🤖 AI Recommendation":
             st.metric("⭐ High Performers", high_perf)
         with col5:
             filtered_products['revenue'] = filtered_products['price'] * filtered_products['hotness_score']
-            st.metric("💵 Revenue", f"${filtered_products['revenue'].sum():,.0f}")
+            total_revenue = filtered_products['revenue'].sum() if len(filtered_products) > 0 else 0
+            st.metric("💵 Revenue Potential", f"${total_revenue:,.0f}")
         
         st.divider()
         
-        if len(filtered_products) > 0:
-            st.markdown("### 🎯 Discover Products")
-            
-            # Show top 20 products from filtered list
-            display_products = filtered_products.sort_values('hotness_score', ascending=False).head(20)
-            
-            cols = st.columns(5)
-            for idx, (_, product) in enumerate(display_products.iterrows()):
-                col_idx = idx % 5
-                with cols[col_idx]:
-                    with st.container(border=True):
-                        image_path = get_image_path(product['article_id'], images_dir)
-                        if image_path:
-                            st.image(image_path, use_column_width=True)
-                        else:
-                            st.info("📷 No image")
-                        
-                        st.markdown(f"**{product['prod_name'][:20]}...**")
-                        st.write(f"💰 ${product['price']:.2f} | 🔥 {product['hotness_score']:.2f}")
-                        
-                        if st.button("View Similar", key=f"sim_{product['article_id']}"):
-                            st.session_state.detail_product_id = product['article_id']
-                            st.session_state.show_detail_modal = True
-            
-            # Recommendation Modal (Simulated)
-            if st.session_state.show_detail_modal and st.session_state.detail_product_id:
-                st.divider()
-                selected_prod = df_articles[df_articles['article_id'] == st.session_state.detail_product_id].iloc[0]
-                
-                st.markdown(f"## 🤖 AI Recommendations for: {selected_prod['prod_name']}")
-                
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    img_path = get_image_path(selected_prod['article_id'], images_dir)
-                    if img_path:
-                        st.image(img_path, use_column_width=True)
-                    st.write(f"**Price:** ${selected_prod['price']}")
-                    st.write(f"**Emotion:** {selected_prod['mood']}")
-                
-                with col2:
-                    st.markdown("### Why you'll love these:")
-                    recs = get_smart_recommendations(selected_prod, df_articles)
-                    
-                    if len(recs) > 0:
-                        rec_cols = st.columns(3)
-                        for r_idx, (_, rec_prod) in enumerate(recs.head(6).iterrows()):
-                            r_col_idx = r_idx % 3
-                            with rec_cols[r_col_idx]:
-                                r_img = get_image_path(rec_prod['article_id'], images_dir)
-                                if r_img:
-                                    st.image(r_img, use_column_width=True)
-                                st.caption(f"{rec_prod['prod_name'][:15]}...")
-                                st.caption(f"Match: {rec_prod['match_score']:.1%}")
-                    else:
-                        st.write("No similar products found.")
-                
-                if st.button("Close Recommendations"):
-                    st.session_state.show_detail_modal = False
-                    st.rerun()
+        if len(filtered_products) == 0:
+            st.warning("No products found with selected filters")
         else:
-            st.warning("No products found matching your criteria.")
+            selected_product_name = st.selectbox(
+                "Choose Product",
+                filtered_products['prod_name'].tolist(),
+                key="product_select"
+            )
+            
+            selected_product = df_articles[df_articles['prod_name'] == selected_product_name].iloc[0]
+            
+            st.divider()
+            
+            st.subheader("📦 Main Product Spotlight")
+            
+            col_img, col_info = st.columns([1.2, 2])
+            
+            with col_img:
+                image_path = get_image_path(selected_product['article_id'], images_dir)
+                if image_path:
+                    st.image(image_path, use_column_width=True)
+                else:
+                    st.info("📷 Image not available")
+            
+            with col_info:
+                st.markdown(f"""
+                ### {selected_product['prod_name']}
+                
+                **Category:** {selected_product['section_name']}  
+                **Group:** {selected_product['product_group_name']}  
+                **Emotion:** {selected_product['mood']}  
+                """)
+                
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.markdown(f"<div class='metric-badge'>💰 ${selected_product['price']:.2f}</div>", unsafe_allow_html=True)
+                with col_b:
+                    st.markdown(f"<div class='metric-badge'>🔥 {selected_product['hotness_score']:.2f}</div>", unsafe_allow_html=True)
+                with col_c:
+                    tier_name, _, _ = get_tier_info(selected_product['hotness_score'])
+                    st.markdown(f"<div class='metric-badge'>{tier_name}</div>", unsafe_allow_html=True)
+                
+                with st.expander("📝 Full Description"):
+                    st.write(selected_product.get('detail_desc', 'No description available'))
+            
+            st.divider()
+            
+            st.subheader("🎯 Smart Match Engine - Top 10 Similar Products")
+            
+            recommendations = get_smart_recommendations(selected_product, df_articles, n_recommendations=10)
+            
+            if len(recommendations) == 0:
+                st.warning("No similar products found")
+            else:
+                cols = st.columns(5)
+                
+                for idx, (_, product) in enumerate(recommendations.iterrows()):
+                    col_idx = idx % 5
+                    
+                    with cols[col_idx]:
+                        with st.container(border=True):
+                            image_path = get_image_path(product['article_id'], images_dir)
+                            if image_path:
+                                st.image(image_path, use_column_width=True)
+                            else:
+                                st.info("📷 No image")
+                            
+                            st.markdown(f"**{product['prod_name'][:20]}...**")
+                            st.write(f"💰 ${product['price']:.2f}")
+                            st.write(f"🔥 {product['hotness_score']:.2f}")
             
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
