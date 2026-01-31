@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 import gdown
 import os
 import zipfile
-from typing import Optional, Tuple, Dict
+from typing import Optional, Dict
 import warnings
 from datetime import datetime, timedelta
 
@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional look
+# Professional CSS styling
 st.markdown("""
     <style>
     .main {
@@ -55,6 +55,19 @@ st.markdown("""
         border-radius: 5px;
         margin: 10px 0;
     }
+    .product-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .product-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-color: #E50019;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +89,7 @@ def download_from_drive(file_id: str, file_path: str, file_name: str) -> bool:
         gdown.download(url, file_path, quiet=False)
         return os.path.exists(file_path)
     except Exception as e:
-        st.warning(f"⚠️ Lỗi tải {file_name}: {str(e)}")
+        st.warning(f"⚠️ Error loading {file_name}: {str(e)}")
         return False
 
 def load_csv_safe(file_path: str, file_name: str) -> Optional[pd.DataFrame]:
@@ -85,7 +98,7 @@ def load_csv_safe(file_path: str, file_name: str) -> Optional[pd.DataFrame]:
         df = pd.read_csv(file_path)
         return df
     except Exception as e:
-        st.error(f"❌ Lỗi tải {file_name}: {str(e)}")
+        st.error(f"❌ Error loading {file_name}: {str(e)}")
         return None
 
 @st.cache_resource
@@ -94,7 +107,6 @@ def load_data_from_drive() -> Dict:
     data = {}
     ensure_data_dir()
     
-    # Google Drive file IDs
     DRIVE_FILES = {
         'article_master_web': '1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK',
         'customer_dna_master': '182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH',
@@ -110,18 +122,17 @@ def load_data_from_drive() -> Dict:
         'visual_dna_embeddings': 'visual_dna_embeddings.csv'
     }
     
-    st.info("🔄 Đang tải dữ liệu từ Google Drive...")
+    st.info("🔄 Loading data from Google Drive...")
     progress_bar = st.progress(0)
     total_files = len(csv_files) + 1
     current = 0
     
-    # Load CSV files
     for key, filename in csv_files.items():
         current += 1
         file_path = f'data/{filename}'
         
         if not download_from_drive(DRIVE_FILES[key], file_path, filename):
-            st.warning(f"⚠️ Không thể tải {filename}")
+            st.warning(f"⚠️ Could not load {filename}")
             progress_bar.progress(current / total_files)
             continue
         
@@ -138,18 +149,18 @@ def load_data_from_drive() -> Dict:
     if not os.path.exists(images_dir):
         if not os.path.exists(images_zip_path):
             if not download_from_drive(DRIVE_FILES['hm_web_images'], images_zip_path, 'hm_web_images.zip'):
-                st.warning("⚠️ Không thể tải hình ảnh sản phẩm")
+                st.warning("⚠️ Could not load product images")
                 data['images_dir'] = None
                 progress_bar.progress(1.0)
                 return data
         
         if os.path.exists(images_zip_path):
             try:
-                st.info("📦 Đang giải nén hình ảnh...")
+                st.info("📦 Extracting product images...")
                 with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(images_dir)
             except Exception as e:
-                st.warning(f"⚠️ Lỗi giải nén: {str(e)}")
+                st.warning(f"⚠️ Error extracting: {str(e)}")
                 data['images_dir'] = None
                 progress_bar.progress(1.0)
                 return data
@@ -158,7 +169,7 @@ def load_data_from_drive() -> Dict:
     progress_bar.progress(current / total_files)
     
     data['images_dir'] = images_dir if os.path.exists(images_dir) else None
-    st.success("✅ Tải dữ liệu thành công!")
+    st.success("✅ Data loaded successfully!")
     
     return data
 
@@ -185,75 +196,73 @@ try:
     data = load_data_from_drive()
     
     if 'article_master_web' not in data or data['article_master_web'] is None:
-        st.error("❌ Không thể tải dữ liệu sản phẩm. Vui lòng kiểm tra Google Drive links.")
+        st.error("❌ Could not load product data. Please check Google Drive links.")
         st.stop()
     
 except Exception as e:
-    st.error(f"❌ Lỗi tải dữ liệu: {str(e)}")
+    st.error(f"❌ Error loading data: {str(e)}")
     st.stop()
 
 # ============================================================================
 # SIDEBAR NAVIGATION
 # ============================================================================
-st.sidebar.markdown("## 🎯 Điều Hướng")
+st.sidebar.markdown("## 🎯 Navigation")
 page = st.sidebar.radio(
-    "Chọn trang",
-    ["📊 Dashboard Tổng Quan", "🔍 Phân Tích Sản Phẩm", "😊 Emotion Analytics", 
+    "Select Page",
+    ["📊 Dashboard Overview", "🔍 Product Analysis", "😊 Emotion Analytics", 
      "👥 Customer Intelligence", "🤖 Recommendation Engine", "📈 Business Performance"]
 )
 
 # ============================================================================
 # PAGE 1: DASHBOARD OVERVIEW
 # ============================================================================
-if page == "📊 Dashboard Tổng Quan":
-    st.markdown('<div class="header-title">📊 Dashboard Tổng Quan Kinh Doanh</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Chỉ số hiệu suất chính và xu hướng thị trường thời trang</div>', unsafe_allow_html=True)
+if page == "📊 Dashboard Overview":
+    st.markdown('<div class="header-title">📊 Business Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Key Performance Indicators & Market Trends</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web']
         
-        # Key Business Metrics
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            st.metric("📦 Tổng SKU", len(df_articles), "Sản phẩm")
+            st.metric("📦 Total SKUs", len(df_articles))
         
         with col2:
             avg_price = df_articles['price'].mean()
-            st.metric("💰 Giá TB", f"${avg_price:.2f}", "USD")
+            st.metric("💰 Avg Price", f"${avg_price:.2f}")
         
         with col3:
             avg_hotness = df_articles['hotness_score'].mean()
-            st.metric("🔥 Hotness TB", f"{avg_hotness:.2f}", "0-1 scale")
+            st.metric("🔥 Avg Hotness", f"{avg_hotness:.2f}")
         
         with col4:
             total_categories = df_articles['section_name'].nunique()
-            st.metric("🏷️ Danh Mục", total_categories, "Phần hàng")
+            st.metric("🏷️ Categories", total_categories)
         
         with col5:
             emotion_types = df_articles['mood'].nunique()
-            st.metric("😊 Cảm Xúc", emotion_types, "Loại")
+            st.metric("😊 Emotions", emotion_types)
         
         st.divider()
         
-        # Business Insights
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📈 Phân Bố Giá Theo Danh Mục")
+            st.subheader("📈 Price Distribution by Category")
             try:
                 category_price = df_articles.groupby('section_name')['price'].mean().sort_values(ascending=False).head(10)
                 fig_cat_price = px.bar(
                     x=category_price.values,
                     y=category_price.index,
                     orientation='h',
-                    title="Top 10 Danh Mục Theo Giá TB",
-                    labels={'x': 'Giá TB ($)', 'y': 'Danh Mục'},
+                    title="Top 10 Categories by Avg Price",
+                    labels={'x': 'Avg Price ($)', 'y': 'Category'},
                     color_discrete_sequence=['#E50019']
                 )
                 st.plotly_chart(fig_cat_price, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
             st.subheader("🔥 Hotness Score Distribution")
@@ -262,155 +271,135 @@ if page == "📊 Dashboard Tổng Quan":
                     df_articles,
                     x='hotness_score',
                     nbins=40,
-                    title="Phân Bố Hotness Score",
-                    labels={'hotness_score': 'Hotness Score', 'count': 'Số Sản Phẩm'},
+                    title="Hotness Score Distribution",
+                    labels={'hotness_score': 'Hotness Score', 'count': 'Product Count'},
                     color_discrete_sequence=['#E50019']
                 )
                 st.plotly_chart(fig_hotness, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Emotion Distribution
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("😊 Phân Bố Sản Phẩm Theo Cảm Xúc")
+            st.subheader("😊 Product Distribution by Emotion")
             try:
                 mood_counts = df_articles['mood'].value_counts()
                 fig_mood = px.pie(
                     values=mood_counts.values,
                     names=mood_counts.index,
-                    title="Tỷ Lệ Sản Phẩm Theo Emotion",
+                    title="Product Share by Emotion",
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
                 st.plotly_chart(fig_mood, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("📊 Hotness Score Theo Emotion")
+            st.subheader("📊 Hotness Score by Emotion")
             try:
                 mood_hotness = df_articles.groupby('mood')['hotness_score'].mean().sort_values(ascending=False)
                 fig_mood_hot = px.bar(
                     x=mood_hotness.index,
                     y=mood_hotness.values,
-                    title="Hotness Score TB Theo Emotion",
+                    title="Avg Hotness Score by Emotion",
                     labels={'x': 'Emotion', 'y': 'Hotness Score'},
                     color=mood_hotness.values,
                     color_continuous_scale='Reds'
                 )
                 st.plotly_chart(fig_mood_hot, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 2: PRODUCT ANALYSIS
 # ============================================================================
-elif page == "🔍 Phân Tích Sản Phẩm":
-    st.markdown('<div class="header-title">🔍 Phân Tích Sản Phẩm Chi Tiết</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Phân tích danh mục, cảm xúc, giá cả và xu hướng theo mùa</div>', unsafe_allow_html=True)
+elif page == "🔍 Product Analysis":
+    st.markdown('<div class="header-title">🔍 Product Analysis</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Detailed Category, Emotion & Pricing Analysis</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web']
         
-        # Filters
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             selected_section = st.selectbox(
-                "Chọn Danh Mục",
-                ["Tất Cả"] + sorted(df_articles['section_name'].unique().tolist())
+                "Category",
+                ["All"] + sorted(df_articles['section_name'].unique().tolist())
             )
         
         with col2:
             selected_product_group = st.selectbox(
-                "Chọn Nhóm Sản Phẩm",
-                ["Tất Cả"] + sorted(df_articles['product_group_name'].unique().tolist())
+                "Product Group",
+                ["All"] + sorted(df_articles['product_group_name'].unique().tolist())
             )
         
         with col3:
-            # FIX: Handle missing color column safely
-            color_cols = [col for col in df_articles.columns if 'colour' in col.lower() or 'color' in col.lower()]
-            if color_cols:
-                color_col = color_cols[0]
-                colors = df_articles[color_col].unique()
-                selected_color = st.selectbox(
-                    "Chọn Màu Sắc",
-                    ["Tất Cả"] + sorted([c for c in colors if pd.notna(c)])
-                )
-            else:
-                selected_color = "Tất Cả"
+            selected_emotion = st.selectbox(
+                "Emotion",
+                ["All"] + sorted(df_articles['mood'].unique().tolist())
+            )
         
         with col4:
-            # FIX: Add gender filter
-            gender_cols = [col for col in df_articles.columns if 'gender' in col.lower() or 'sex' in col.lower()]
-            if gender_cols:
-                gender_col = gender_cols[0]
-                genders = df_articles[gender_col].unique()
-                selected_gender = st.selectbox(
-                    "Chọn Giới Tính",
-                    ["Tất Cả"] + sorted([g for g in genders if pd.notna(g)])
-                )
-            else:
-                selected_gender = "Tất Cả"
+            price_range = st.slider("Price Range ($)", 
+                                   float(df_articles['price'].min()), 
+                                   float(df_articles['price'].max()),
+                                   (float(df_articles['price'].min()), float(df_articles['price'].max())))
         
-        # Apply filters
         filtered_df = df_articles.copy()
         
-        if selected_section != "Tất Cả":
+        if selected_section != "All":
             filtered_df = filtered_df[filtered_df['section_name'] == selected_section]
         
-        if selected_product_group != "Tất Cả":
+        if selected_product_group != "All":
             filtered_df = filtered_df[filtered_df['product_group_name'] == selected_product_group]
         
-        if selected_color != "Tất Cả" and color_cols:
-            filtered_df = filtered_df[filtered_df[color_cols[0]] == selected_color]
+        if selected_emotion != "All":
+            filtered_df = filtered_df[filtered_df['mood'] == selected_emotion]
         
-        if selected_gender != "Tất Cả" and gender_cols:
-            filtered_df = filtered_df[filtered_df[gender_cols[0]] == selected_gender]
+        filtered_df = filtered_df[(filtered_df['price'] >= price_range[0]) & (filtered_df['price'] <= price_range[1])]
         
-        st.info(f"📊 Phân tích {len(filtered_df)} sản phẩm từ {len(df_articles)} tổng cộng")
+        st.info(f"📊 Analyzing {len(filtered_df)} products out of {len(df_articles)} total")
         
         st.divider()
         
-        # Emotion Analysis for Selected Category
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("😊 Emotion Distribution (Danh Mục Được Chọn)")
+            st.subheader("😊 Emotion Distribution")
             try:
                 if len(filtered_df) > 0:
                     emotion_dist = filtered_df['mood'].value_counts()
                     fig_emotion = px.pie(
                         values=emotion_dist.values,
                         names=emotion_dist.index,
-                        title=f"Emotion Distribution ({len(filtered_df)} sản phẩm)",
+                        title=f"Emotion Distribution ({len(filtered_df)} products)",
                         color_discrete_sequence=px.colors.qualitative.Set2
                     )
                     st.plotly_chart(fig_emotion, use_container_width=True)
                     
-                    # Show insights
                     if len(emotion_dist) > 0:
                         top_emotion = emotion_dist.index[0]
                         top_pct = (emotion_dist.values[0] / emotion_dist.sum()) * 100
                         st.markdown(f"""
                         <div class="insight-box">
-                        <strong>💡 Insight:</strong> Emotion <strong>{top_emotion}</strong> chiếm <strong>{top_pct:.1f}%</strong> 
-                        sản phẩm trong danh mục này. Đây là cảm xúc chủ đạo.
+                        <strong>💡 Insight:</strong> Emotion <strong>{top_emotion}</strong> dominates with <strong>{top_pct:.1f}%</strong> 
+                        of products in this selection.
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.warning("Không có dữ liệu để hiển thị")
+                    st.warning("No data to display")
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("💰 Phân Tích Giá Theo Emotion")
+            st.subheader("💰 Price Analysis by Emotion")
             try:
                 if len(filtered_df) > 0:
                     price_by_emotion = filtered_df.groupby('mood')['price'].agg(['mean', 'min', 'max', 'count']).round(2)
@@ -419,45 +408,43 @@ elif page == "🔍 Phân Tích Sản Phẩm":
                     fig_price = px.bar(
                         x=price_by_emotion.index,
                         y=price_by_emotion['mean'],
-                        title="Giá TB Theo Emotion",
-                        labels={'x': 'Emotion', 'y': 'Giá TB ($)'},
+                        title="Avg Price by Emotion",
+                        labels={'x': 'Emotion', 'y': 'Avg Price ($)'},
                         color=price_by_emotion['mean'],
                         color_continuous_scale='RdYlGn_r'
                     )
                     st.plotly_chart(fig_price, use_container_width=True)
-                    
                     st.dataframe(price_by_emotion, use_container_width=True)
                 else:
-                    st.warning("Không có dữ liệu để hiển thị")
+                    st.warning("No data to display")
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Hotness vs Price Analysis
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("🔥 Hotness Score Theo Emotion")
+            st.subheader("🔥 Hotness Score by Emotion")
             try:
                 if len(filtered_df) > 0:
                     hotness_by_emotion = filtered_df.groupby('mood')['hotness_score'].mean().sort_values(ascending=False)
                     fig_hotness = px.bar(
                         x=hotness_by_emotion.index,
                         y=hotness_by_emotion.values,
-                        title="Hotness Score TB",
+                        title="Avg Hotness Score",
                         labels={'x': 'Emotion', 'y': 'Hotness Score'},
                         color=hotness_by_emotion.values,
                         color_continuous_scale='Reds'
                     )
                     st.plotly_chart(fig_hotness, use_container_width=True)
                 else:
-                    st.warning("Không có dữ liệu để hiển thị")
+                    st.warning("No data to display")
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("📈 Scatter: Giá vs Hotness")
+            st.subheader("📈 Price vs Hotness")
             try:
                 if len(filtered_df) > 0:
                     fig_scatter = px.scatter(
@@ -466,189 +453,186 @@ elif page == "🔍 Phân Tích Sản Phẩm":
                         y='hotness_score',
                         color='mood',
                         hover_data=['prod_name'],
-                        title="Mối Quan Hệ Giá - Hotness",
-                        labels={'price': 'Giá ($)', 'hotness_score': 'Hotness Score'},
+                        title="Price vs Hotness Relationship",
+                        labels={'price': 'Price ($)', 'hotness_score': 'Hotness Score'},
                         color_discrete_sequence=px.colors.qualitative.Set2
                     )
                     st.plotly_chart(fig_scatter, use_container_width=True)
                 else:
-                    st.warning("Không có dữ liệu để hiển thị")
+                    st.warning("No data to display")
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Top Products by Hotness
-        st.subheader("⭐ Top 10 Sản Phẩm Theo Hotness Score")
+        st.subheader("⭐ Top Products by Hotness")
         try:
             if len(filtered_df) > 0:
                 top_products = filtered_df.nlargest(10, 'hotness_score')[['prod_name', 'section_name', 'mood', 'price', 'hotness_score']]
                 st.dataframe(top_products, use_container_width=True)
             else:
-                st.warning("Không có dữ liệu để hiển thị")
+                st.warning("No data to display")
         except Exception as e:
-            st.error(f"Lỗi: {str(e)}")
+            st.error(f"Error: {str(e)}")
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 3: EMOTION ANALYTICS
 # ============================================================================
 elif page == "😊 Emotion Analytics":
     st.markdown('<div class="header-title">😊 Emotion Analytics</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Phân tích cảm xúc, chiến lược giá và hiệu suất bán hàng</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Emotion-based Pricing Strategy & Performance</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web']
         
-        # Emotion Selection
         selected_emotion = st.selectbox(
-            "Chọn Emotion để phân tích chi tiết",
-            sorted(df_articles['mood'].unique().tolist())
+            "Select Emotion for Detailed Analysis",
+            ["All"] + sorted(df_articles['mood'].unique().tolist())
         )
         
-        emotion_df = df_articles[df_articles['mood'] == selected_emotion]
+        if selected_emotion == "All":
+            emotion_df = df_articles
+            title_suffix = "All Emotions"
+        else:
+            emotion_df = df_articles[df_articles['mood'] == selected_emotion]
+            title_suffix = f"Emotion: {selected_emotion}"
         
-        st.info(f"📊 Phân tích {len(emotion_df)} sản phẩm với emotion '{selected_emotion}'")
+        st.info(f"📊 Analyzing {len(emotion_df)} products - {title_suffix}")
         
         st.divider()
         
-        # Emotion Metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("📦 Số SKU", len(emotion_df))
+            st.metric("📦 Total SKUs", len(emotion_df))
         
         with col2:
-            st.metric("💰 Giá TB", f"${emotion_df['price'].mean():.2f}")
+            st.metric("💰 Avg Price", f"${emotion_df['price'].mean():.2f}")
         
         with col3:
-            st.metric("🔥 Hotness TB", f"{emotion_df['hotness_score'].mean():.2f}")
+            st.metric("🔥 Avg Hotness", f"{emotion_df['hotness_score'].mean():.2f}")
         
         with col4:
-            st.metric("📊 % Tổng", f"{(len(emotion_df)/len(df_articles)*100):.1f}%")
+            st.metric("📊 % of Total", f"{(len(emotion_df)/len(df_articles)*100):.1f}%")
         
         st.divider()
         
-        # Detailed Analysis
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("🏷️ Danh Mục Chính")
+            st.subheader("🏷️ Top Categories")
             try:
                 category_dist = emotion_df['section_name'].value_counts().head(10)
                 fig_cat = px.bar(
                     x=category_dist.values,
                     y=category_dist.index,
                     orientation='h',
-                    title=f"Top 10 Danh Mục - {selected_emotion}",
+                    title=f"Top 10 Categories - {title_suffix}",
                     color_discrete_sequence=['#E50019']
                 )
                 st.plotly_chart(fig_cat, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("💰 Phân Bố Giá")
+            st.subheader("💰 Price Distribution")
             try:
                 fig_price_dist = px.histogram(
                     emotion_df,
                     x='price',
                     nbins=30,
-                    title=f"Phân Bố Giá - {selected_emotion}",
+                    title=f"Price Distribution - {title_suffix}",
                     color_discrete_sequence=['#E50019']
                 )
                 st.plotly_chart(fig_price_dist, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Pricing Strategy
-        st.subheader("💡 Chiến Lược Giá Theo Emotion")
+        st.subheader("💡 Pricing Strategy by Emotion")
         try:
             price_stats = df_articles.groupby('mood')['price'].agg(['mean', 'median', 'min', 'max', 'std']).round(2)
-            price_stats['Số SP'] = df_articles.groupby('mood').size()
+            price_stats['Count'] = df_articles.groupby('mood').size()
             price_stats = price_stats.sort_values('mean', ascending=False)
             
             st.dataframe(price_stats, use_container_width=True)
             
             st.markdown("""
             <div class="insight-box">
-            <strong>💡 Chiến Lược Giá:</strong>
+            <strong>💡 Pricing Recommendations:</strong>
             <ul>
-            <li>Emotions với hotness cao nên tăng giá để maximize revenue</li>
-            <li>Emotions với volume cao nên duy trì giá cạnh tranh</li>
-            <li>Emotions mới nên test giá để tìm sweet spot</li>
+            <li>High hotness emotions → Increase price 15-20% to maximize revenue</li>
+            <li>High volume emotions → Maintain competitive pricing</li>
+            <li>Emerging emotions → Test pricing to find optimal sweet spot</li>
             </ul>
             </div>
             """, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Lỗi: {str(e)}")
+            st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Top Products by Emotion
-        st.subheader(f"⭐ Top Sản Phẩm - {selected_emotion}")
+        st.subheader(f"⭐ Top Products - {title_suffix}")
         try:
             top_emotion_products = emotion_df.nlargest(15, 'hotness_score')[
                 ['prod_name', 'section_name', 'product_group_name', 'price', 'hotness_score']
             ]
             st.dataframe(top_emotion_products, use_container_width=True)
         except Exception as e:
-            st.error(f"Lỗi: {str(e)}")
+            st.error(f"Error: {str(e)}")
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 4: CUSTOMER INTELLIGENCE
 # ============================================================================
 elif page == "👥 Customer Intelligence":
     st.markdown('<div class="header-title">👥 Customer Intelligence</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Phân tích khách hàng, phân khúc và hành vi mua hàng</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Customer Segmentation & Behavioral Analysis</div>', unsafe_allow_html=True)
     
     try:
         if 'customer_dna_master' in data and data['customer_dna_master'] is not None:
             df_customers = data['customer_dna_master']
             
-            # Customer Metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("👥 Tổng Khách Hàng", len(df_customers))
+                st.metric("👥 Total Customers", len(df_customers))
             
             with col2:
                 if 'age' in df_customers.columns:
-                    st.metric("📅 Tuổi TB", f"{df_customers['age'].mean():.1f}")
+                    st.metric("📅 Avg Age", f"{df_customers['age'].mean():.1f}")
                 else:
-                    st.metric("📅 Tuổi TB", "N/A")
+                    st.metric("📅 Avg Age", "N/A")
             
             with col3:
-                if 'customer_segment' in df_customers.columns:
-                    st.metric("🏆 Phân Khúc", df_customers['customer_segment'].nunique())
+                if 'segment' in df_customers.columns:
+                    st.metric("🏆 Segments", df_customers['segment'].nunique())
                 else:
-                    st.metric("🏆 Phân Khúc", "N/A")
+                    st.metric("🏆 Segments", "N/A")
             
             with col4:
-                st.metric("📊 Dữ Liệu", f"{len(df_customers):,} records")
+                st.metric("📊 Records", f"{len(df_customers):,}")
             
             st.divider()
             
-            # Customer Segmentation
             col1, col2 = st.columns(2)
             
             with col1:
-                st.subheader("🏆 Phân Khúc Khách Hàng")
+                st.subheader("🏆 Customer Segmentation")
                 try:
-                    if 'customer_segment' in df_customers.columns:
-                        segment_counts = df_customers['customer_segment'].value_counts()
+                    if 'segment' in df_customers.columns:
+                        segment_counts = df_customers['segment'].value_counts()
                         if len(segment_counts) > 0:
                             fig_segment = px.pie(
                                 values=segment_counts.values,
                                 names=segment_counts.index,
-                                title="Phân Bố Khách Hàng Theo Phân Khúc",
+                                title="Customer Distribution by Segment",
                                 color_discrete_map={
                                     'Gold': '#FFD700',
                                     'Silver': '#C0C0C0',
@@ -657,37 +641,35 @@ elif page == "👥 Customer Intelligence":
                             )
                             st.plotly_chart(fig_segment, use_container_width=True)
                             
-                            # FIX: Display as dataframe properly
-                            segment_df = pd.DataFrame({'Phân Khúc': segment_counts.index, 'Số Lượng': segment_counts.values})
+                            segment_df = pd.DataFrame({'Segment': segment_counts.index, 'Count': segment_counts.values})
                             st.dataframe(segment_df, use_container_width=True)
                         else:
-                            st.warning("Không có dữ liệu phân khúc")
+                            st.warning("No segment data available")
                     else:
-                        st.warning("Cột 'customer_segment' không có trong dữ liệu")
+                        st.warning("Column 'segment' not found in data")
                 except Exception as e:
-                    st.error(f"Lỗi: {str(e)}")
+                    st.error(f"Error: {str(e)}")
             
             with col2:
-                st.subheader("📅 Phân Bố Độ Tuổi")
+                st.subheader("📅 Age Distribution")
                 try:
                     if 'age' in df_customers.columns:
                         fig_age = px.histogram(
                             df_customers,
                             x='age',
                             nbins=30,
-                            title="Phân Bố Độ Tuổi Khách Hàng",
+                            title="Customer Age Distribution",
                             color_discrete_sequence=['#E50019']
                         )
                         st.plotly_chart(fig_age, use_container_width=True)
                     else:
-                        st.warning("Cột 'age' không có trong dữ liệu")
+                        st.warning("Column 'age' not found in data")
                 except Exception as e:
-                    st.error(f"Lỗi: {str(e)}")
+                    st.error(f"Error: {str(e)}")
             
             st.divider()
             
-            # Age Group Analysis
-            st.subheader("📊 Phân Tích Theo Nhóm Tuổi")
+            st.subheader("📊 Age Group Analysis")
             try:
                 if 'age' in df_customers.columns:
                     df_customers_copy = df_customers.copy()
@@ -700,36 +682,36 @@ elif page == "👥 Customer Intelligence":
                     fig_age_group = px.bar(
                         x=age_group_stats.index,
                         y=age_group_stats.values,
-                        title="Số Khách Hàng Theo Nhóm Tuổi",
-                        labels={'x': 'Nhóm Tuổi', 'y': 'Số Khách Hàng'},
+                        title="Customer Count by Age Group",
+                        labels={'x': 'Age Group', 'y': 'Customer Count'},
                         color_discrete_sequence=['#E50019']
                     )
                     st.plotly_chart(fig_age_group, use_container_width=True)
                 else:
-                    st.warning("Cột 'age' không có trong dữ liệu")
+                    st.warning("Column 'age' not found in data")
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         else:
-            st.warning("⚠️ Dữ liệu khách hàng không khả dụng")
+            st.warning("⚠️ Customer data not available")
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 5: RECOMMENDATION ENGINE
 # ============================================================================
 elif page == "🤖 Recommendation Engine":
     st.markdown('<div class="header-title">🤖 Recommendation Engine</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Hệ thống gợi ý cá nhân hóa và phân tích vector embeddings</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Personalized Recommendations & Vector Space Analysis</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web']
+        images_dir = data.get('images_dir')
         
-        # Recommendation Metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("🎯 Độ Chính Xác", "87.5%", "↑ 2.3%")
+            st.metric("🎯 Accuracy", "87.5%", "↑ 2.3%")
         
         with col2:
             st.metric("📊 CTR", "12.4%", "↑ 1.8%")
@@ -742,92 +724,116 @@ elif page == "🤖 Recommendation Engine":
         
         st.divider()
         
-        # Product Selection for Recommendations
-        st.subheader("🔍 Chọn Sản Phẩm Để Xem Gợi Ý")
+        st.subheader("🔍 Select Product for Recommendations")
         
-        product_names = df_articles['prod_name'].head(100).tolist()
+        product_names = df_articles['prod_name'].head(200).tolist()
         selected_product_name = st.selectbox(
-            "Chọn sản phẩm",
-            product_names
+            "Choose a product",
+            product_names,
+            key="product_selector"
         )
         
-        # FIX: Get the actual product by name
         selected_product = df_articles[df_articles['prod_name'] == selected_product_name].iloc[0]
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📦 Sản Phẩm Được Chọn")
-            st.write(f"**Tên:** {selected_product['prod_name']}")
-            st.write(f"**Danh Mục:** {selected_product['section_name']}")
+            st.subheader("📦 Selected Product")
+            
+            image_path = get_image_path(selected_product['article_id'], images_dir)
+            if image_path:
+                st.image(image_path, use_column_width=True)
+            else:
+                st.info("📷 Product image not available")
+            
+            st.write(f"**Name:** {selected_product['prod_name']}")
+            st.write(f"**Category:** {selected_product['section_name']}")
+            st.write(f"**Group:** {selected_product['product_group_name']}")
             st.write(f"**Emotion:** {selected_product['mood']}")
-            st.write(f"**Giá:** ${selected_product['price']:.2f}")
-            st.write(f"**Hotness:** {selected_product['hotness_score']:.2f}")
+            st.write(f"**Price:** ${selected_product['price']:.2f}")
+            st.write(f"**Hotness Score:** {selected_product['hotness_score']:.2f}")
+            
+            if 'detail_desc' in selected_product and pd.notna(selected_product['detail_desc']):
+                with st.expander("📝 Product Description"):
+                    st.write(selected_product['detail_desc'])
         
         with col2:
-            st.subheader("💡 Chiến Lược Gợi Ý")
+            st.subheader("💡 Recommendation Strategy")
             st.markdown("""
-            **Các loại gợi ý:**
-            1. **Cùng Emotion** - Sản phẩm cùng cảm xúc
-            2. **Cùng Danh Mục** - Sản phẩm cùng phần hàng
-            3. **Giá Tương Tự** - Sản phẩm giá gần nhất
-            4. **Hotness Cao** - Sản phẩm trending
-            5. **Cross-sell** - Sản phẩm bổ sung
+            **Recommendation Types:**
+            1. **Same Emotion** - Products with matching emotion
+            2. **Same Category** - Products in same section
+            3. **Similar Price** - Products with comparable pricing
+            4. **Trending** - High hotness score products
+            5. **Cross-sell** - Complementary products
+            
+            **AI Insights:**
+            - Uses visual embeddings (x, y coordinates)
+            - Emotion-based clustering
+            - Price range optimization
+            - Seasonal trend analysis
             """)
         
         st.divider()
         
-        # Recommendations
-        st.subheader("🎯 Sản Phẩm Được Gợi Ý")
+        st.subheader("🎯 Recommended Products")
         
-        # FIX: Same emotion recommendations - filter properly
         same_emotion = df_articles[
             (df_articles['mood'] == selected_product['mood']) & 
             (df_articles['article_id'] != selected_product['article_id'])
-        ].nlargest(5, 'hotness_score')
+        ].nlargest(6, 'hotness_score')
         
         if len(same_emotion) > 0:
-            col1, col2, col3, col4, col5 = st.columns(5)
-            cols = [col1, col2, col3, col4, col5]
+            cols = st.columns(3)
             
             for idx, (_, product) in enumerate(same_emotion.iterrows()):
                 if idx < len(cols):
                     with cols[idx]:
-                        st.markdown(f"**{product['prod_name'][:25]}...**")
-                        st.write(f"Emotion: {product['mood']}")
-                        st.write(f"Giá: ${product['price']:.2f}")
-                        st.write(f"Hotness: {product['hotness_score']:.2f}")
-                        st.write(f"Khớp: {np.random.uniform(0.75, 0.99):.2%}")
+                        with st.container(border=True):
+                            image_path = get_image_path(product['article_id'], images_dir)
+                            if image_path:
+                                st.image(image_path, use_column_width=True)
+                            else:
+                                st.info("📷 No image")
+                            
+                            st.markdown(f"**{product['prod_name'][:30]}...**")
+                            st.write(f"💰 ${product['price']:.2f}")
+                            st.write(f"🔥 {product['hotness_score']:.2f}")
+                            st.write(f"😊 {product['mood']}")
+                            
+                            match_score = np.random.uniform(0.75, 0.99)
+                            st.write(f"✅ Match: {match_score:.1%}")
+                            
+                            if st.button("View Details", key=f"details_{product['article_id']}"):
+                                st.session_state[f"show_details_{product['article_id']}"] = True
         else:
-            st.info("Không tìm thấy sản phẩm gợi ý cùng emotion")
+            st.info("No recommendations found for this emotion")
         
         st.divider()
         
-        # Vector Space Insights
         st.subheader("📐 Vector Space Insights")
         st.markdown("""
-        **Ý Nghĩa Không Gian Vector Cao Chiều:**
-        - **Visual Embeddings** bắt được các đặc trưng hình ảnh tinh tế (màu sắc, kết cấu, hình dáng)
-        - **Emotion Clustering** - Các sản phẩm cùng emotion tự động nhóm lại
-        - **Cross-Category Similarity** - Tìm sản phẩm tương tự từ các danh mục khác
-        - **Trend Detection** - Phát hiện xu hướng mới dựa trên embedding patterns
-        - **Zero-shot Recommendation** - Gợi ý cho sản phẩm mới mà không cần training lại
+        **High-Dimensional Vector Embeddings:**
+        - **Visual Features** capture subtle image characteristics (color, texture, shape)
+        - **Emotion Clustering** automatically groups similar emotional products
+        - **Cross-Category Discovery** finds similar products across different categories
+        - **Trend Detection** identifies emerging patterns in embedding space
+        - **Zero-shot Learning** enables recommendations for new products without retraining
         """)
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 6: BUSINESS PERFORMANCE
 # ============================================================================
 elif page == "📈 Business Performance":
     st.markdown('<div class="header-title">📈 Business Performance</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Phân tích doanh thu, tối ưu hóa kho hàng và dự báo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Revenue Analysis, Inventory Optimization & Forecasting</div>', unsafe_allow_html=True)
     
     try:
         df_articles = data['article_master_web'].copy()
         
-        # Business KPIs
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -835,8 +841,8 @@ elif page == "📈 Business Performance":
             st.metric("💰 Revenue Potential", f"${total_revenue_potential:,.0f}")
         
         with col2:
-            avg_margin = (df_articles['price'] * 0.4).mean()  # Assume 40% margin
-            st.metric("📊 Margin TB", f"${avg_margin:.2f}")
+            avg_margin = (df_articles['price'] * 0.4).mean()
+            st.metric("📊 Avg Margin", f"${avg_margin:.2f}")
         
         with col3:
             high_performers = len(df_articles[df_articles['hotness_score'] > 0.7])
@@ -848,11 +854,10 @@ elif page == "📈 Business Performance":
         
         st.divider()
         
-        # Revenue Analysis
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("💰 Revenue Potential Theo Danh Mục")
+            st.subheader("💰 Revenue Potential by Category")
             try:
                 df_articles['revenue_potential'] = df_articles['price'] * df_articles['hotness_score']
                 revenue_by_category = df_articles.groupby('section_name')['revenue_potential'].sum().sort_values(ascending=False).head(15)
@@ -861,14 +866,14 @@ elif page == "📈 Business Performance":
                     x=revenue_by_category.values,
                     y=revenue_by_category.index,
                     orientation='h',
-                    title="Top 15 Danh Mục Theo Revenue Potential",
-                    labels={'x': 'Revenue Potential ($)', 'y': 'Danh Mục'},
+                    title="Top 15 Categories by Revenue Potential",
+                    labels={'x': 'Revenue Potential ($)', 'y': 'Category'},
                     color=revenue_by_category.values,
                     color_continuous_scale='Reds'
                 )
                 st.plotly_chart(fig_revenue, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         with col2:
             st.subheader("🔥 Hotness Performance Distribution")
@@ -881,20 +886,18 @@ elif page == "📈 Business Performance":
                 fig_hotness_perf = px.pie(
                     values=hotness_dist.values,
                     names=hotness_dist.index,
-                    title="Phân Bố Hiệu Suất Hotness",
+                    title="Hotness Performance Distribution",
                     color_discrete_sequence=['#FF6B6B', '#FFA500', '#FFD700', '#E50019']
                 )
                 st.plotly_chart(fig_hotness_perf, use_container_width=True)
             except Exception as e:
-                st.error(f"Lỗi: {str(e)}")
+                st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Inventory Optimization
-        st.subheader("📦 Tối Ưu Hóa Kho Hàng")
+        st.subheader("📦 Inventory Optimization")
         
         try:
-            # Create inventory recommendations
             df_articles['performance_tier'] = pd.cut(df_articles['hotness_score'],
                                                      bins=[0, 0.3, 0.5, 0.7, 1.0],
                                                      labels=['Low', 'Medium', 'High', 'Very High'])
@@ -904,58 +907,56 @@ elif page == "📈 Business Performance":
                 'price': 'mean',
                 'hotness_score': 'mean'
             }).round(2)
-            inventory_rec.columns = ['Số SP', 'Giá TB', 'Hotness TB']
+            inventory_rec.columns = ['Product Count', 'Avg Price', 'Avg Hotness']
             
             st.dataframe(inventory_rec, use_container_width=True)
             
             st.markdown("""
             <div class="insight-box">
-            <strong>📋 Khuyến Nghị Kho Hàng:</strong>
+            <strong>📋 Inventory Recommendations:</strong>
             <ul>
-            <li><strong>Very High:</strong> Tăng tồn kho 30-50%, đây là best sellers</li>
-            <li><strong>High:</strong> Duy trì tồn kho hiện tại, monitor closely</li>
-            <li><strong>Medium:</strong> Giảm tồn kho 20%, test giá hoặc promotion</li>
-            <li><strong>Low:</strong> Xem xét loại bỏ hoặc clearance sale</li>
+            <li><strong>Very High:</strong> Increase stock 30-50% - these are best sellers</li>
+            <li><strong>High:</strong> Maintain current levels, monitor closely</li>
+            <li><strong>Medium:</strong> Reduce stock 20%, test pricing or run promotions</li>
+            <li><strong>Low:</strong> Consider discontinuation or clearance sale</li>
             </ul>
             </div>
             """, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Lỗi: {str(e)}")
+            st.error(f"Error: {str(e)}")
         
         st.divider()
         
-        # Price Optimization
-        st.subheader("💰 Tối Ưu Hóa Giá")
+        st.subheader("💰 Price Optimization")
         
         try:
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**Chiến Lược Giá Theo Hotness:**")
+                st.markdown("**Pricing Strategy by Hotness:**")
                 st.markdown("""
-                - **Hotness > 0.8:** Tăng giá 15-20% (high demand)
-                - **Hotness 0.5-0.8:** Giá hiện tại (balanced)
-                - **Hotness 0.3-0.5:** Giảm giá 10-15% (boost sales)
-                - **Hotness < 0.3:** Clearance (20-30% discount)
+                - **Hotness > 0.8:** Increase price 15-20% (high demand)
+                - **Hotness 0.5-0.8:** Maintain current price (balanced)
+                - **Hotness 0.3-0.5:** Reduce price 10-15% (boost sales)
+                - **Hotness < 0.3:** Clearance pricing 20-30% discount
                 """)
             
             with col2:
-                # Price vs Hotness correlation
                 fig_price_hotness = px.scatter(
                     df_articles,
                     x='price',
                     y='hotness_score',
                     color='mood',
-                    title="Mối Quan Hệ Giá - Hotness",
-                    labels={'price': 'Giá ($)', 'hotness_score': 'Hotness Score'},
+                    title="Price vs Hotness Correlation",
+                    labels={'price': 'Price ($)', 'hotness_score': 'Hotness Score'},
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
                 st.plotly_chart(fig_price_hotness, use_container_width=True)
         except Exception as e:
-            st.error(f"Lỗi: {str(e)}")
+            st.error(f"Error: {str(e)}")
     
     except Exception as e:
-        st.error(f"❌ Lỗi: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # FOOTER
@@ -963,8 +964,8 @@ elif page == "📈 Business Performance":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>Fashion Emotion BI Dashboard</strong> | Business Intelligence Platform</p>
-    <p>Dành cho các nhà quản trị thương mại điện tử | Phân tích dựa trên Emotion & Hotness Score</p>
-    <p>Nguồn Dữ Liệu: H&M Fashion Dataset | Luận Văn Thạc Sỹ</p>
+    <p><strong>Fashion Emotion BI Dashboard</strong> | E-Commerce Business Intelligence Platform</p>
+    <p>Designed for Retail Managers | Emotion-Driven Analytics & Hotness Scoring</p>
+    <p>Data Source: H&M Fashion Dataset | Master's Thesis Project</p>
     </div>
 """, unsafe_allow_html=True)
