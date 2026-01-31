@@ -59,10 +59,14 @@ def download_from_drive(file_id: str, file_path: str) -> bool:
         if os.path.exists(file_path):
             return True
         url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, file_path, quiet=False)
+        try:
+            gdown.download(url, file_path, quiet=False)
+        except:
+            # Fallback: try direct download
+            import urllib.request
+            urllib.request.urlretrieve(url, file_path)
         return os.path.exists(file_path)
     except Exception as e:
-        st.warning(f"⚠️ Error: {str(e)}")
         return False
 
 def load_csv_safe(file_path: str) -> Optional[pd.DataFrame]:
@@ -135,8 +139,12 @@ def get_image_path(article_id: str, images_dir: Optional[str]) -> Optional[str]:
         return None
     try:
         article_id = str(article_id).zfill(10)
-        image_path = os.path.join(images_dir, f"{article_id}.jpg")
-        return image_path if os.path.exists(image_path) else None
+        # Try multiple image formats
+        for ext in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG']:
+            image_path = os.path.join(images_dir, f"{article_id}{ext}")
+            if os.path.exists(image_path):
+                return image_path
+        return None
     except:
         return None
 
@@ -435,12 +443,14 @@ elif page == "🔍 Inventory & Pricing":
             ]
             
             with cols[idx]:
+                avg_price = tier_products['price'].mean() if len(tier_products) > 0 else 0
+                avg_hotness = tier_products['hotness_score'].mean() if len(tier_products) > 0 else 0
                 st.markdown(f"""
                 <div class="{color_class}">
                 <h4>{tier_name}</h4>
                 <p><strong>📦 Products:</strong> {len(tier_products)}</p>
-                <p><strong>💰 Avg Price:</strong> ${tier_products['price'].mean():.2f if len(tier_products) > 0 else 0:.2f}</p>
-                <p><strong>🔥 Avg Hotness:</strong> {tier_products['hotness_score'].mean():.2f if len(tier_products) > 0 else 0:.2f}</p>
+                <p><strong>💰 Avg Price:</strong> ${avg_price:.2f}</p>
+                <p><strong>🔥 Avg Hotness:</strong> {avg_hotness:.2f}</p>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -916,6 +926,6 @@ st.markdown("""
     <p><strong>Fashion Emotion BI Dashboard</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
-    <p style="font-size: 0.8rem; margin-top: 1rem;">Master's Thesis Project | Advanced E-Commerce Intelligence</p>
+    <p style="font-size: 0.8rem; margin-top: 1rem;">Do Thi Hien - Master's Thesis Project | Advanced E-Commerce Intelligence</p>
     </div>
 """, unsafe_allow_html=True)
