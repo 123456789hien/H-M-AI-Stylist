@@ -606,10 +606,22 @@ elif page == "👥 Customer DNA":
             
             st.subheader("⭐ Top Loyalists")
             
-            if len(filtered_customers) > 0:
-                top_customers = filtered_customers.nlargest(15, 'purchase_count').copy()
+            # Build Top Loyalists based on BOTH emotion and segment filters
+            top_loyalists_data = df_customers.copy()
+            
+            # Apply segment filter
+            if selected_segment != "All":
+                top_loyalists_data = top_loyalists_data[top_loyalists_data['segment'] == selected_segment]
+            
+            # Apply emotion filter
+            if selected_emotion != "All" and df_transactions is not None:
+                emotion_customers = df_transactions[df_transactions['actual_purchased_mood'] == selected_emotion]['customer_id'].unique()
+                top_loyalists_data = top_loyalists_data[top_loyalists_data['customer_id'].isin(emotion_customers)]
+            
+            if len(top_loyalists_data) > 0:
+                top_customers = top_loyalists_data.nlargest(15, 'purchase_count').copy()
                 
-                # Select and rename columns
+                # Select columns
                 display_cols = ['customer_id', 'age', 'segment', 'avg_spending', 'purchase_count']
                 top_customers = top_customers[display_cols].reset_index(drop=True)
                 
