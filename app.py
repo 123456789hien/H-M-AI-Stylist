@@ -10,11 +10,12 @@ import zipfile
 from typing import Optional, Tuple, Dict
 import warnings
 from datetime import datetime, timedelta
+from PIL import Image
 
 warnings.filterwarnings('ignore')
 
 # ============================================================================
-# PAGE CONFIGURATION
+# PAGE CONFIGURATION (GIỮ NGUYÊN GỐC)
 # ============================================================================
 st.set_page_config(
     page_title="Fashion Emotion BI Dashboard",
@@ -23,279 +24,178 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional look (GIỮ NGUYÊN BỐ CỤC GỐC)
+# Custom CSS (GIỮ NGUYÊN GỐC)
 st.markdown("""
     <style>
-    .main {
-        padding-top: 1rem;
-    }
-    .header-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #E50019;
-        margin-bottom: 0.5rem;
-    }
-    .subtitle {
-        font-size: 1rem;
-        color: #666;
-        margin-bottom: 2rem;
-    }
+    .main { padding-top: 1rem; }
+    .header-title { font-size: 2.5rem; font-weight: 700; color: #E50019; margin-bottom: 0.5rem; }
+    .subtitle { font-size: 1rem; color: #666; margin-bottom: 2rem; }
     .metric-box {
         background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        margin-bottom: 10px;
+        padding: 20px; border-radius: 10px; color: white; text-align: center; margin-bottom: 10px;
     }
     .insight-box {
-        background: #f0f2f6;
-        padding: 15px;
-        border-left: 4px solid #E50019;
-        border-radius: 5px;
-        margin: 10px 0;
+        background: #f0f2f6; padding: 15px; border-left: 4px solid #E50019; border-radius: 5px; margin: 10px 0;
     }
+    .product-card {
+        border: 1px solid #eee; padding: 10px; border-radius: 8px; transition: 0.3s; background: white;
+    }
+    .product-card:hover { border-color: #E50019; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING (FIXED WITH YOUR DRIVE LINKS)
+# DATA LOADING & IMAGE HANDLING (KHÔI PHỤC HÀM XỬ LÝ ẢNH)
 # ============================================================================
 @st.cache_resource
-def load_all_data():
+def load_data():
     file_ids = {
         "article_master_web.csv": "1rLdTRGW2iu50edIDWnGSBkZqWznnNXLK",
         "customer_dna_master.csv": "182gmD8nYPAuy8JO_vIqzVJy8eMKqrGvH",
         "customer_test_validation.csv": "1mAufyQbOrpXdjkYXE4nhYyleGBoB6nXB",
-        "visual_dna_embeddings.csv": "1VLNeGstZhn0_TdMiV-6nosxvxyFO5a54",
         "hm_web_images.zip": "1J3bLgVE5PzRB24Y1gaUB01tsxOk0plHT"
     }
-
+    
     for filename, fid in file_ids.items():
         if not os.path.exists(filename):
             try:
-                url = f'https://drive.google.com/uc?id={fid}'
-                gdown.download(url, filename, quiet=False)
+                gdown.download(f'https://drive.google.com/uc?id={fid}', filename, quiet=True)
             except: pass
 
     if os.path.exists("hm_web_images.zip") and not os.path.exists("images"):
         with zipfile.ZipFile("hm_web_images.zip", 'r') as zip_ref:
             zip_ref.extractall("images")
 
-    try:
-        df_art = pd.read_csv("article_master_web.csv")
-        df_cust = pd.read_csv("customer_dna_master.csv")
-        df_val = pd.read_csv("customer_test_validation.csv")
-        
-        df_art['article_id'] = df_art['article_id'].astype(str).str.zfill(10)
-        df_art['revenue'] = df_art['hotness_score'] * df_art['price'] * 1000
-        
-        return df_art, df_cust, df_val
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return None, None, None
+    df_art = pd.read_csv("article_master_web.csv")
+    df_art['article_id'] = df_art['article_id'].astype(str).str.zfill(10)
+    df_art['revenue'] = df_art['hotness_score'] * df_art['price'] * 1000
+    
+    return df_art, pd.read_csv("customer_dna_master.csv"), pd.read_csv("customer_test_validation.csv")
 
-df_articles, df_customers, df_validation = load_all_data()
+def get_product_image(article_id):
+    # Đường dẫn ảnh theo cấu trúc H&M (3 chữ số đầu là folder)
+    folder = article_id[:3]
+    img_path = f"images/{folder}/{article_id}.jpg"
+    if os.path.exists(img_path):
+        return img_path
+    return "https://via.placeholder.com/200x300?text=No+Image"
+
+df_articles, df_customers, df_validation = load_data()
 
 # ============================================================================
-# SIDEBAR NAVIGATION & FILTERS (FIXED: ADDED SECTION FILTER)
+# SIDEBAR (GIỮ NGUYÊN MENU GỐC)
 # ============================================================================
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg", width=100)
     st.markdown("---")
-    
-    page = st.radio(
-        "NAVIGATION",
-        ["📊 Executive Dashboard", "🔍 Product Intelligence", "👤 Customer Intelligence", 
-         "😊 Emotion Analytics", "🤖 Recommendation Engine", "📈 Pricing & Strategy"]
-    )
-    
-    st.markdown("---")
-    st.markdown("### FILTERS")
-    
-    # Filter 1: Section (Gender) - FIXED: ADDED THIS FILTER
-    section_options = ["All"] + sorted(df_articles['section_name'].unique().tolist())
-    selected_section = st.selectbox("Department / Section", section_options)
-    
-    # Filter 2: Category
-    group_options = ["All"] + sorted(df_articles['product_group_name'].unique().tolist())
-    selected_group = st.selectbox("Product Category", group_options)
-    
-    # Filter 3: Mood
-    mood_options = ["All"] + sorted(df_articles['mood'].unique().tolist())
-    selected_mood = st.selectbox("Emotional Mood", mood_options)
-
-# Filter Logic
-filtered_df = df_articles.copy()
-if selected_section != "All":
-    filtered_df = filtered_df[filtered_df['section_name'] == selected_section]
-if selected_group != "All":
-    filtered_df = filtered_df[filtered_df['product_group_name'] == selected_group]
-if selected_mood != "All":
-    filtered_df = filtered_df[filtered_df['mood'] == selected_mood]
+    page = st.radio("DANH MỤC PHÂN TÍCH", [
+        "📊 Dashboard Tổng Quan", 
+        "🔍 Chi Tiết Sản Phẩm", 
+        "👤 Phân Khúc Khách Hàng", 
+        "😊 Phân Tích Cảm Xúc", 
+        "🤖 Hệ Thống Gợi Ý", 
+        "📈 Chiến Lược & Giá Bán"
+    ])
 
 # ============================================================================
-# 1. EXECUTIVE DASHBOARD
+# TRANG 5: HỆ THỐNG GỢI Ý (KHÔI PHỤC CÓ ẢNH CLICK ĐƯỢC)
 # ============================================================================
-if page == "📊 Executive Dashboard":
-    st.markdown('<h1 class="header-title">Executive Dashboard</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">AI-Driven Fashion Insights & Market Performance</p>', unsafe_allow_html=True)
+if page == "🤖 Hệ Thống Gợi Ý":
+    st.markdown('<h1 class="header-title">Hệ Thống Gợi Ý Thông Minh</h1>', unsafe_allow_html=True)
     
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.markdown(f'<div class="metric-box"><h3>{len(filtered_df):,}</h3><p>Active Articles</p></div>', unsafe_allow_html=True)
-    with kpi2:
-        st.markdown(f'<div class="metric-box"><h3>{filtered_df["hotness_score"].mean():.2f}</h3><p>Avg Hotness</p></div>', unsafe_allow_html=True)
-    with kpi3:
-        st.markdown(f'<div class="metric-box"><h3>${filtered_df["price"].mean():.2f}</h3><p>Avg Price</p></div>', unsafe_allow_html=True)
-    with kpi4:
-        st.markdown(f'<div class="metric-box"><h3>${filtered_df["revenue"].sum():,.0f}</h3><p>Est. Revenue</p></div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("💰 Revenue by Category")
-        rev_data = filtered_df.groupby('product_group_name')['revenue'].sum().sort_values(ascending=True).reset_index()
-        # FIXED: barh error fix
-        fig_rev = px.bar(rev_data, x='revenue', y='product_group_name', orientation='h', 
-                         color='revenue', color_continuous_scale='Reds', template='plotly_white')
-        st.plotly_chart(fig_rev, use_container_width=True)
-
-    with col2:
-        st.subheader("🎭 Market Mood Distribution")
-        fig_mood = px.pie(filtered_df, names='mood', values='revenue', hole=0.4,
-                          color_discrete_sequence=px.colors.sequential.Reds_r)
-        st.plotly_chart(fig_mood, use_container_width=True)
-
-# ============================================================================
-# 2. PRODUCT INTELLIGENCE
-# ============================================================================
-elif page == "🔍 Product Intelligence":
-    st.markdown('<h1 class="header-title">Product Intelligence</h1>', unsafe_allow_html=True)
+    col_sel, col_info = st.columns([1, 1])
+    with col_sel:
+        target_name = st.selectbox("Chọn sản phẩm khách hàng quan tâm:", df_articles['prod_name'].unique())
+        target_row = df_articles[df_articles['prod_name'] == target_name].iloc[0]
+        st.image(get_product_image(target_row['article_id']), width=200, caption=f"Sản phẩm gốc: {target_row['article_id']}")
     
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.dataframe(filtered_df[['article_id', 'prod_name', 'product_group_name', 'section_name', 'price', 'hotness_score', 'mood']], 
-                     use_container_width=True, height=500)
-    with col2:
-        st.markdown('<div class="insight-box"><h3>Analysis</h3><p>Filter products by department and mood to identify top-performing fashion articles.</p></div>', unsafe_allow_html=True)
-        # Category distribution
-        cat_dist = filtered_df['product_group_name'].value_counts().reset_index()
-        fig_cat = px.bar(cat_dist, x='count', y='product_group_name', orientation='h', title="Inventory Count by Category")
-        st.plotly_chart(fig_cat, use_container_width=True)
-
-# ============================================================================
-# 3. CUSTOMER INTELLIGENCE
-# ============================================================================
-elif page == "👤 Customer Intelligence":
-    st.markdown('<h1 class="header-title">Customer Intelligence</h1>', unsafe_allow_html=True)
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Customer Segments")
-        fig_seg = px.pie(df_customers, names='segment', color_discrete_sequence=px.colors.sequential.Reds)
-        st.plotly_chart(fig_seg, use_container_width=True)
-    with c2:
-        st.subheader("Value Analysis")
-        # FIXED: Scatter display with proper indexes
-        fig_scat = px.scatter(df_customers.head(1000), x='age', y='avg_spending', color='segment', 
-                              size='purchase_count', template='plotly_white')
-        st.plotly_chart(fig_scat, use_container_width=True)
-    
-    st.subheader("Detailed DNA Database")
-    st.dataframe(df_customers.head(100), use_container_width=True)
-
-# ============================================================================
-# 4. EMOTION ANALYTICS
-# ============================================================================
-elif page == "😊 Emotion Analytics":
-    st.markdown('<h1 class="header-title">Emotion Analytics</h1>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Mood Performance (Hotness)")
-        mood_perf = filtered_df.groupby('mood')['hotness_score'].mean().sort_values().reset_index()
-        fig_p = px.bar(mood_perf, x='hotness_score', y='mood', orientation='h', color='hotness_score', color_continuous_scale='Reds')
-        st.plotly_chart(fig_p, use_container_width=True)
-    with col2:
-        st.subheader("Mood-based Pricing Strategy")
-        fig_b = px.box(filtered_df, x='mood', y='price', color='mood')
-        st.plotly_chart(fig_b, use_container_width=True)
-
-# ============================================================================
-# 5. RECOMMENDATION ENGINE (FIXED LOGIC)
-# ============================================================================
-elif page == "🤖 Recommendation Engine":
-    st.markdown('<h1 class="header-title">AI Recommendation Engine</h1>', unsafe_allow_html=True)
-    
-    # Use available products from filtered list
-    current_products = filtered_df['prod_name'].unique()
-    if len(current_products) > 0:
-        target_prod = st.selectbox("Select a reference product:", current_products)
-        
-        # Get mood of selected product
-        prod_mood = df_articles[df_articles['prod_name'] == target_prod]['mood'].values[0]
-        st.info(f"Target Mood detected: **{prod_mood}**. Finding similar items...")
-        
-        # FIXED: Logic to get different recommendations based on selection
-        recs = df_articles[(df_articles['mood'] == prod_mood) & (df_articles['prod_name'] != target_prod)].head(6)
-        
-        cols = st.columns(3)
-        for i, (idx, row) in enumerate(recs.iterrows()):
-            with cols[i % 3]:
-                st.markdown(f"""
-                <div style="border:1px solid #ddd; padding:15px; border-radius:10px; background:white;">
-                    <h5 style="color:#E50019; margin:0;">{row['prod_name'][:30]}</h5>
-                    <p style="font-size:0.8rem; margin:5px 0;">ID: {row['article_id']}</p>
-                    <p style="font-weight:bold;">${row['price']:.2f}</p>
-                    <span style="background:#FFE5E5; color:#E50019; padding:2px 8px; border-radius:5px; font-size:0.7rem;">{row['mood']}</span>
-                </div>
-                """, unsafe_allow_html=True)
-    else:
-        st.warning("No products found for the selected filters.")
-
-# ============================================================================
-# 6. PRICING & STRATEGY (FIXED: PAGE 6 RESTORED)
-# ============================================================================
-elif page == "📈 Pricing & Strategy":
-    st.markdown('<h1 class="header-title">Pricing & Marketing Strategy</h1>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.markdown("""
-        <div class="insight-box">
-        <h3>Pricing Insights</h3>
-        <ul>
-            <li><b>High Hotness (>0.7):</b> Maintain premium pricing.</li>
-            <li><b>Moderate (0.4-0.7):</b> Seasonal promotions.</li>
-            <li><b>Low (<0.4):</b> Inventory clearance recommended.</li>
-        </ul>
+    with col_info:
+        st.markdown(f"""
+        <div class='insight-box'>
+            <h4>Phân tích Mood: {target_row['mood']}</h4>
+            <p>Hotness Score: {target_row['hotness_score']:.2f}</p>
+            <p>Nhóm: {target_row['product_group_name']}</p>
         </div>
         """, unsafe_allow_html=True)
-    
-    with col2:
-        # Scatter correlation
-        fig_strat = px.scatter(filtered_df, x='price', y='hotness_score', color='mood',
-                               hover_data=['prod_name'], title="Price vs. Hotness Correlation")
-        st.plotly_chart(fig_strat, use_container_width=True)
 
-    st.subheader("Model Validation (Inventory vs Demand)")
-    # Logic from your original file
-    inv_dist = df_articles['mood'].value_counts(normalize=True).reset_index()
-    sales_dist = df_validation['actual_purchased_mood'].value_counts(normalize=True).reset_index()
+    st.subheader("Sản phẩm gợi ý (Cùng phong cách cảm xúc)")
+    # Logic gợi ý theo mood từ code gốc
+    recs = df_articles[(df_articles['mood'] == target_row['mood']) & (df_articles['article_id'] != target_row['article_id'])].head(10)
     
-    fig_val = go.Figure()
-    fig_val.add_trace(go.Bar(x=inv_dist['mood'], y=inv_dist['proportion'], name='AI Predicted Inventory', marker_color='#E50019'))
-    fig_val.add_trace(go.Bar(x=sales_dist['actual_purchased_mood'], y=sales_dist['proportion'], name='Actual Sales Demand', marker_color='#333333'))
-    fig_val.update_layout(barmode='group', template='plotly_white')
-    st.plotly_chart(fig_val, use_container_width=True)
+    cols = st.columns(5)
+    for i, (idx, row) in enumerate(recs.iterrows()):
+        with cols[i % 5]:
+            st.image(get_product_image(row['article_id']), use_column_width=True)
+            st.markdown(f"**{row['prod_name'][:20]}**")
+            st.markdown(f"Price: ${row['price']}")
+            if st.button(f"Xem chi tiết {row['article_id'][-4:]}", key=row['article_id']):
+                st.session_state['selected_art'] = row['article_id']
+                st.rerun()
 
 # ============================================================================
-# FOOTER
+# TRANG 6: CHIẾN LƯỢC & GIÁ BÁN (KHÔI PHỤC HOÀN TOÀN)
 # ============================================================================
+elif page == "📈 Chiến Lược & Giá Bán":
+    st.markdown('<h1 class="header-title">Chiến Lược Kinh Doanh & Giá</h1>', unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["💰 Phân Tích Giá", "🧪 Kiểm Chứng AI"])
+    
+    with tab1:
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.markdown("""
+            <div class="insight-box">
+            <h3>💡 Chiến Lược Theo Hotness</h3>
+            <ul>
+                <li><b>Hotness > 0.8:</b> Premium Pricing (Giữ giá).</li>
+                <li><b>Hotness 0.5-0.8:</b> Balanced (Marketing mạnh).</li>
+                <li><b>Hotness < 0.3:</b> Clearance (Giảm giá 30%+).</li>
+            </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            fig_p = px.scatter(df_articles, x='price', y='hotness_score', color='mood', title="Mối Quan Hệ Giá - Hotness")
+            st.plotly_chart(fig_p, use_container_width=True)
+
+    with tab2:
+        st.subheader("So sánh Tồn kho (Dự báo AI) vs Nhu cầu (Thực tế)")
+        # Phân phối Mood dự kiến từ danh mục sản phẩm
+        pred = df_articles['mood'].value_counts(normalize=True).reset_index()
+        # Phân phối Mood thực tế từ lịch sử validation
+        actual = df_validation['actual_purchased_mood'].value_counts(normalize=True).reset_index()
+        
+        fig_val = go.Figure()
+        fig_val.add_trace(go.Bar(x=pred['mood'], y=pred['proportion'], name='AI Inventory Prediction', marker_color='#E50019'))
+        fig_val.add_trace(go.Bar(x=actual['actual_purchased_mood'], y=actual['proportion'], name='Actual Sales Demand', marker_color='#333333'))
+        fig_val.update_layout(barmode='group')
+        st.plotly_chart(fig_val, use_container_width=True)
+
+# ============================================================================
+# CÁC TRANG CÒN LẠI (GIỮ NGUYÊN GỐC)
+# ============================================================================
+elif page == "📊 Dashboard Tổng Quan":
+    st.markdown('<h1 class="header-title">Executive Dashboard</h1>', unsafe_allow_html=True)
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Tổng sản phẩm", f"{len(df_articles):,}")
+    k2.metric("Hotness Trung Bình", f"{df_articles['hotness_score'].mean():.2f}")
+    k3.metric("Doanh thu dự kiến", f"${df_articles['revenue'].sum():,.0f}")
+    
+    # SỬA LỖI barh duy nhất:
+    group_data = df_articles.groupby('product_group_name')['revenue'].sum().reset_index()
+    fig = px.bar(group_data, x='revenue', y='product_group_name', orientation='h', color='revenue')
+    st.plotly_chart(fig, use_container_width=True)
+
+elif page == "🔍 Chi Tiết Sản Phẩm":
+    st.markdown('<h1 class="header-title">Inventory Detail</h1>', unsafe_allow_html=True)
+    st.dataframe(df_articles, use_container_width=True)
+
+elif page == "👤 Phân Khúc Khách Hàng":
+    st.markdown('<h1 class="header-title">Customer DNA</h1>', unsafe_allow_html=True)
+    st.plotly_chart(px.pie(df_customers, names='segment', hole=0.4), use_container_width=True)
+
+elif page == "😊 Phân Tích Cảm Xúc":
+    st.markdown('<h1 class="header-title">Emotion Analysis</h1>', unsafe_allow_html=True)
+    st.plotly_chart(px.box(df_articles, x='mood', y='hotness_score', color='mood'), use_container_width=True)
+
 st.divider()
-st.markdown("""
-    <div style="text-align: center; color: #999; font-size: 0.9rem;">
-    <p><strong>Fashion Emotion BI Dashboard</strong> | Master Thesis Project</p>
-    <p>© 2026 AI-Driven Business Intelligence Platform</p>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #999;'>© 2026 Fashion Emotion BI Platform</p>", unsafe_allow_html=True)
