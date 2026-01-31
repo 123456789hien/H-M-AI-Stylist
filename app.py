@@ -602,19 +602,6 @@ elif page == "🤖 AI Recommendation":
         df_articles = data['article_master_web'].copy()
         images_dir = data.get('images_dir')
         
-        # KPIs
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("🎯 Accuracy", "87.5%", "↑ 2.3%")
-        with col2:
-            st.metric("📊 CTR", "12.4%", "↑ 1.8%")
-        with col3:
-            st.metric("💰 AOV", "$45.20", "↑ 3.2%")
-        with col4:
-            st.metric("📦 Items/Session", "4.3", "↑ 0.5")
-        
-        st.divider()
-        
         st.subheader("🔍 Product Selection")
         
         col1, col2, col3, col4 = st.columns(4)
@@ -663,6 +650,28 @@ elif page == "🤖 AI Recommendation":
             (filtered_products['price'] <= price_range[1])
         ]
         
+        # Dynamic KPIs based on filters
+        st.divider()
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("📦 Products", f"{len(filtered_products):,}")
+        with col2:
+            avg_price = filtered_products['price'].mean() if len(filtered_products) > 0 else 0
+            st.metric("💰 Avg Price", f"${avg_price:.2f}")
+        with col3:
+            avg_hotness = filtered_products['hotness_score'].mean() if len(filtered_products) > 0 else 0
+            st.metric("🔥 Avg Hotness", f"{avg_hotness:.2f}")
+        with col4:
+            high_perf = len(filtered_products[filtered_products['hotness_score'] > 0.7])
+            st.metric("⭐ High Performers", high_perf)
+        with col5:
+            filtered_products['revenue'] = filtered_products['price'] * filtered_products['hotness_score']
+            total_revenue = filtered_products['revenue'].sum() if len(filtered_products) > 0 else 0
+            st.metric("💵 Revenue Potential", f"${total_revenue:,.0f}")
+        
+        st.divider()
+        
         if len(filtered_products) == 0:
             st.warning("No products found with selected filters")
         else:
@@ -676,97 +685,74 @@ elif page == "🤖 AI Recommendation":
             
             st.divider()
             
-            # Professional Two-Column Layout
-            col_main, col_detail = st.columns([2.5, 1.5])
+            st.subheader("📦 Main Product Spotlight")
             
-            with col_main:
-                st.subheader("📦 Main Product Spotlight")
-                
-                col_img, col_info = st.columns([1.2, 1])
-                
-                with col_img:
-                    image_path = get_image_path(selected_product['article_id'], images_dir)
-                    if image_path:
-                        st.image(image_path, use_column_width=True)
-                    else:
-                        st.info("📷 Image not available")
-                
-                with col_info:
-                    st.markdown(f"""
-                    ### {selected_product['prod_name']}
-                    
-                    **Category:** {selected_product['section_name']}  
-                    **Group:** {selected_product['product_group_name']}  
-                    **Emotion:** {selected_product['mood']}  
-                    """)
-                    
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.markdown(f"<div class='metric-badge'>💰 ${selected_product['price']:.2f}</div>", unsafe_allow_html=True)
-                    with col_b:
-                        st.markdown(f"<div class='metric-badge'>🔥 {selected_product['hotness_score']:.2f}</div>", unsafe_allow_html=True)
-                    
-                    with st.expander("📝 Full Description"):
-                        st.write(selected_product.get('detail_desc', 'No description available'))
-                
-                st.divider()
-                
-                st.subheader("🎯 Smart Match Engine - Top 10 Similar Products")
-                
-                recommendations = get_smart_recommendations(selected_product, df_articles, n_recommendations=10)
-                
-                if len(recommendations) == 0:
-                    st.warning("No similar products found")
+            col_img, col_info = st.columns([1.2, 2])
+            
+            with col_img:
+                image_path = get_image_path(selected_product['article_id'], images_dir)
+                if image_path:
+                    st.image(image_path, use_column_width=True)
                 else:
-                    cols = st.columns(5)
-                    
-                    for idx, (_, product) in enumerate(recommendations.iterrows()):
-                        if idx < len(cols):
-                            with cols[idx]:
-                                with st.container(border=True):
-                                    image_path = get_image_path(product['article_id'], images_dir)
-                                    if image_path:
-                                        st.image(image_path, use_column_width=True)
-                                    else:
-                                        st.info("📷")
-                                    
-                                    st.markdown(f"**{product['prod_name'][:18]}...**")
-                                    st.write(f"💰 ${product['price']:.2f}")
-                                    st.write(f"🔥 {product['hotness_score']:.2f}")
-                                    
-                                    match_pct = product['match_score'] * 100
-                                    st.markdown(
-                                        f"<div style='background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 8px; border-radius: 10px; text-align: center; font-weight: bold; margin-top: 8px;'>✅ {match_pct:.0f}% Match</div>",
-                                        unsafe_allow_html=True
-                                    )
-                                    
-                                    if st.button("View", key=f"view_{product['article_id']}", use_container_width=True):
-                                        st.session_state.show_detail_modal = True
-                                        st.session_state.detail_product_id = product['article_id']
-                                        st.rerun()
+                    st.info("📷 Image not available")
             
-            with col_detail:
-                st.markdown('<div class="detail-panel">', unsafe_allow_html=True)
-                
-                st.markdown("### 📋 Product Details")
-                
-                tier_name, tier_class, strategy = get_tier_info(selected_product['hotness_score'])
-                
+            with col_info:
                 st.markdown(f"""
-                **Tier:** {tier_name}  
-                **Strategy:** {strategy}
+                ### {selected_product['prod_name']}
                 
-                ---
-                
-                **Price:** ${selected_product['price']:.2f}  
-                **Hotness:** {selected_product['hotness_score']:.2f}  
-                **Emotion:** {selected_product['mood']}  
                 **Category:** {selected_product['section_name']}  
                 **Group:** {selected_product['product_group_name']}  
-                **Article ID:** {selected_product['article_id']}  
+                **Emotion:** {selected_product['mood']}  
                 """)
                 
-                st.markdown('</div>', unsafe_allow_html=True)
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.markdown(f"<div class='metric-badge'>💰 ${selected_product['price']:.2f}</div>", unsafe_allow_html=True)
+                with col_b:
+                    st.markdown(f"<div class='metric-badge'>🔥 {selected_product['hotness_score']:.2f}</div>", unsafe_allow_html=True)
+                with col_c:
+                    tier_name, _, _ = get_tier_info(selected_product['hotness_score'])
+                    st.markdown(f"<div class='metric-badge'>{tier_name}</div>", unsafe_allow_html=True)
+                
+                with st.expander("📝 Full Description"):
+                    st.write(selected_product.get('detail_desc', 'No description available'))
+            
+            st.divider()
+            
+            st.subheader("🎯 Smart Match Engine - Top 10 Similar Products")
+            
+            recommendations = get_smart_recommendations(selected_product, df_articles, n_recommendations=10)
+            
+            if len(recommendations) == 0:
+                st.warning("No similar products found")
+            else:
+                cols = st.columns(5)
+                
+                for idx, (_, product) in enumerate(recommendations.iterrows()):
+                    col_idx = idx % 5
+                    
+                    with cols[col_idx]:
+                        with st.container(border=True):
+                            image_path = get_image_path(product['article_id'], images_dir)
+                            if image_path:
+                                st.image(image_path, use_column_width=True)
+                            else:
+                                st.info("📷")
+                            
+                            st.markdown(f"**{product['prod_name'][:18]}...**")
+                            st.write(f"💰 ${product['price']:.2f}")
+                            st.write(f"🔥 {product['hotness_score']:.2f}")
+                            
+                            match_pct = product['match_score'] * 100
+                            st.markdown(
+                                f"<div style='background: linear-gradient(135deg, #E50019 0%, #FF6B6B 100%); color: white; padding: 8px; border-radius: 10px; text-align: center; font-weight: bold; margin-top: 8px;'>✅ {match_pct:.0f}% Match</div>",
+                                unsafe_allow_html=True
+                            )
+                            
+                            if st.button("View", key=f"view_{product['article_id']}", use_container_width=True):
+                                st.session_state.show_detail_modal = True
+                                st.session_state.detail_product_id = product['article_id']
+                                st.rerun()
             
             # Detail Modal for Recommended Products
             if st.session_state.show_detail_modal and st.session_state.detail_product_id:
@@ -919,7 +905,7 @@ elif page == "📈 Performance & Financial":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien</strong></p>
+    <p><strong>H & M Fashion BI Dashboard</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
     </div>
