@@ -548,8 +548,8 @@ elif page == "👥 Customer DNA":
             # Filter transactions by emotion if available
             filtered_transactions = df_transactions.copy() if df_transactions is not None else None
             if selected_emotion != "All" and filtered_transactions is not None:
-                emotion_articles = df_articles[df_articles['mood'] == selected_emotion]['article_id'].tolist()
-                filtered_transactions = filtered_transactions[filtered_transactions['article_id'].isin(emotion_articles)]
+                # Filter transactions by emotion (actual_purchased_mood)
+                filtered_transactions = filtered_transactions[filtered_transactions['actual_purchased_mood'].str.contains(selected_emotion, case=False, na=False)]
                 # Get customers who bought from this emotion
                 emotion_customers = filtered_transactions['customer_id'].unique()
                 filtered_customers = filtered_customers[filtered_customers['customer_id'].isin(emotion_customers)]
@@ -612,13 +612,9 @@ elif page == "👥 Customer DNA":
                 ]].reset_index(drop=True)
                 
                 # Add emotion column if transactions available
-                if filtered_transactions is not None and len(filtered_transactions) > 0:
+                if df_transactions is not None and len(df_transactions) > 0:
                     top_customers['emotion'] = top_customers['customer_id'].apply(
-                        lambda cid: df_articles[df_articles['article_id'].isin(
-                            filtered_transactions[filtered_transactions['customer_id'] == cid]['article_id']
-                        )]['mood'].mode()[0] if len(df_articles[df_articles['article_id'].isin(
-                            filtered_transactions[filtered_transactions['customer_id'] == cid]['article_id']
-                        )]) > 0 else 'N/A'
+                        lambda cid: df_transactions[df_transactions['customer_id'] == cid]['actual_purchased_mood'].mode()[0] if len(df_transactions[df_transactions['customer_id'] == cid]) > 0 else 'N/A'
                     )
                     top_customers = top_customers[['customer_id', 'age', 'segment', 'emotion', 'avg_spending', 'purchase_count']]
                 
