@@ -607,18 +607,29 @@ elif page == "👥 Customer DNA":
             st.subheader("⭐ Top Loyalists")
             
             if len(filtered_customers) > 0:
-                top_customers = filtered_customers.nlargest(15, 'purchase_count')[[
-                    'customer_id', 'age', 'segment', 'avg_spending', 'purchase_count'
-                ]].reset_index(drop=True)
+                top_customers = filtered_customers.nlargest(15, 'purchase_count').copy()
+                
+                # Select and rename columns
+                display_cols = ['customer_id', 'age', 'segment', 'avg_spending', 'purchase_count']
+                top_customers = top_customers[display_cols].reset_index(drop=True)
                 
                 # Add emotion column if transactions available
                 if df_transactions is not None and len(df_transactions) > 0:
-                    top_customers['emotion'] = top_customers['customer_id'].apply(
-                        lambda cid: df_transactions[df_transactions['customer_id'] == cid]['actual_purchased_mood'].mode()[0] if len(df_transactions[df_transactions['customer_id'] == cid]) > 0 else 'N/A'
-                    )
+                    emotions = []
+                    for cid in top_customers['customer_id']:
+                        cust_trans = df_transactions[df_transactions['customer_id'] == cid]
+                        if len(cust_trans) > 0:
+                            mode_emotion = cust_trans['actual_purchased_mood'].mode()
+                            emotion = mode_emotion[0] if len(mode_emotion) > 0 else 'N/A'
+                        else:
+                            emotion = 'N/A'
+                        emotions.append(emotion)
+                    top_customers['emotion'] = emotions
                     top_customers = top_customers[['customer_id', 'age', 'segment', 'emotion', 'avg_spending', 'purchase_count']]
                 
+                # Format display
                 top_customers.index = top_customers.index + 1
+                top_customers.columns = ['Customer ID', 'Age', 'Segment', 'Emotion', 'Avg Spending', 'Purchases']
                 st.dataframe(top_customers, use_container_width=True)
             else:
                 st.info("No customers found for selected filters")
@@ -940,7 +951,7 @@ elif page == "📈 Performance & Financial":
 st.divider()
 st.markdown("""
     <div style="text-align: center; color: #999; font-size: 0.9rem; margin-top: 2rem;">
-    <p><strong>H & M Fashion BI Dashboard</strong></p>
+    <p><strong>H & M Fashion BI Dashboard by Do Thi Hien</strong></p>
     <p>Deep Learning-Driven Business Intelligence For Personalized Fashion Retail</p>
     <p>Integrating Emotion Analytics And Recommendation System</p>
     </div>
